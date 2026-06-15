@@ -11,6 +11,11 @@ import {
   CreateNewPasswordScreen,
   PasswordChangedSuccessScreen
 } from './catatdulu/screens/Auth';
+import { Dashboard } from './catatdulu/screens/Dashboard';
+import { IncomeScreen, ExpenseScreen } from './catatdulu/screens/Transactions';
+import { BudgetScreen, AnalyticsScreen } from './catatdulu/screens/BudgetAnalytics';
+import { ReportsScreen } from './catatdulu/screens/Reports';
+import { NotificationsScreen, ProfileScreen, SettingsScreen } from './catatdulu/screens/Account';
 
 export function CatatDuluApp() {
   // State Utama Manajemen Tampilan Screen
@@ -84,61 +89,15 @@ export function CatatDuluApp() {
   // ==========================================
   return (
     <Layout route={route} setRoute={setRoute}>
-      {route === 'dashboard' && (
-        <div className="space-y-4">
-          <h1 className="text-2xl font-bold">Dashboard Keuangan</h1>
-          <p className="text-muted-foreground text-sm">Selamat datang di aplikasi manajemen finansial Anda.</p>
-          {/* Tempatkan Komponen Utama UI Dashboard Kamu Di Sini */}
-        </div>
-      )}
-
-      {route === 'income' && (
-        <div>
-          <h1 className="text-2xl font-bold">Kelola Pemasukan (Income)</h1>
-        </div>
-      )}
-
-      {route === 'expense' && (
-        <div>
-          <h1 className="text-2xl font-bold">Kelola Pengeluaran (Expense)</h1>
-        </div>
-      )}
-
-      {route === 'budget' && (
-        <div>
-          <h1 className="text-2xl font-bold">Budgeting Cerdas</h1>
-        </div>
-      )}
-
-      {route === 'analytics' && (
-        <div>
-          <h1 className="text-2xl font-bold">Analisis Keuangan</h1>
-        </div>
-      )}
-
-      {route === 'reports' && (
-        <div>
-          <h1 className="text-2xl font-bold">Laporan Finansial</h1>
-        </div>
-      )}
-
-      {route === 'notifications' && (
-        <div>
-          <h1 className="text-2xl font-bold">Notifikasi Sistem</h1>
-        </div>
-      )}
-
-      {route === 'profile' && (
-        <div>
-          <h1 className="text-2xl font-bold">Profil Pengguna</h1>
-        </div>
-      )}
-
-      {route === 'settings' && (
-        <div>
-          <h1 className="text-2xl font-bold">Pengaturan Aplikasi</h1>
-        </div>
-      )}
+      {route === 'dashboard' && <Dashboard setRoute={setRoute} />}
+      {route === 'income' && <IncomeScreen setRoute={setRoute} />}
+      {route === 'expense' && <ExpenseScreen setRoute={setRoute} />}
+      {route === 'budget' && <BudgetScreen />}
+      {route === 'analytics' && <AnalyticsScreen />}
+      {route === 'reports' && <ReportsScreen />}
+      {route === 'notifications' && <NotificationsScreen />}
+      {route === 'profile' && <ProfileScreen />}
+      {route === 'settings' && <SettingsScreen />}
 
       {/* Fallback Screen handler jika route belum didefinisikan tampilannya */}
       {!['dashboard', 'income', 'expense', 'budget', 'analytics', 'reports', 'notifications', 'profile', 'settings'].includes(route) && (
