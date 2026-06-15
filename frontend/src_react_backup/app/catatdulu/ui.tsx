@@ -74,21 +74,65 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
 }
 
 export function StatCard({
-  label, value, delta, icon, accent = 'primary',
-}: { label: string; value: string; delta?: string; icon: ReactNode; accent?: 'primary' | 'success' | 'warning' | 'danger' }) {
-  const accents = {
-    primary: 'from-blue-50 to-white text-primary',
-    success: 'from-emerald-50 to-white text-emerald-700',
-    warning: 'from-amber-50 to-white text-amber-700',
-    danger: 'from-red-50 to-white text-red-700',
-  };
+  label, value, delta, icon, accent = 'primary', variant = 'gradient',
+}: {
+  label: string;
+  value: string;
+  delta?: string;
+  icon: ReactNode;
+  accent?: 'primary' | 'success' | 'warning' | 'danger';
+  variant?: 'flat' | 'gradient';
+}) {
+  const containerStyles = variant === 'gradient'
+    ? {
+        primary: 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-transparent shadow-md shadow-blue-500/10',
+        success: 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white border-transparent shadow-md shadow-emerald-500/10',
+        warning: 'bg-gradient-to-br from-amber-500 to-orange-600 text-white border-transparent shadow-md shadow-amber-500/10',
+        danger: 'bg-gradient-to-br from-rose-500 to-red-600 text-white border-transparent shadow-md shadow-red-500/10',
+      }[accent]
+    : {
+        primary: 'bg-card border-border text-foreground',
+        success: 'bg-card border-border text-foreground',
+        warning: 'bg-card border-border text-foreground',
+        danger: 'bg-card border-border text-foreground',
+      }[accent];
+
+  const iconStyles = variant === 'gradient'
+    ? 'bg-white/20 text-white'
+    : {
+        primary: 'bg-blue-50 text-blue-600',
+        success: 'bg-emerald-50 text-emerald-600',
+        warning: 'bg-amber-50 text-amber-600',
+        danger: 'bg-red-50 text-red-600',
+      }[accent];
+
+  const labelStyles = variant === 'gradient'
+    ? 'text-white/85'
+    : 'text-muted-foreground';
+
+  const badgeStyles = variant === 'gradient'
+    ? 'bg-white/25 text-white border-transparent'
+    : undefined;
+
   return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-card border border-border rounded-2xl p-5 hover:shadow-md transition-shadow">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`border rounded-2xl p-5 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 ${containerStyles}`}
+    >
       <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${accents[accent]} flex items-center justify-center`}>{icon}</div>
-        {delta && <Badge variant={delta.startsWith('-') ? 'danger' : 'success'}>{delta}</Badge>}
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconStyles}`}>
+          {icon}
+        </div>
+        {delta && (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+            badgeStyles ? badgeStyles : (delta.startsWith('-') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700')
+          }`}>
+            {delta}
+          </span>
+        )}
       </div>
-      <div className="text-xs text-muted-foreground mb-1">{label}</div>
+      <div className={`text-xs mb-1 font-medium ${labelStyles}`}>{label}</div>
       <div className="text-2xl font-bold tracking-tight">{value}</div>
     </motion.div>
   );
