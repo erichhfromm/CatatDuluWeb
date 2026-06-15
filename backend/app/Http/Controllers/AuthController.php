@@ -53,15 +53,54 @@ class AuthController extends Controller
     }
 
     /**
-     * Kirim OTP via Email menggunakan Laravel Mail.
+     * Kirim OTP via Email menggunakan Laravel Mail atau Mailtrap API.
      * Return true jika berhasil, false jika gagal.
      */
     private function sendEmailOTP(string $email, string $otpCode, string $userName, string $purpose = 'register'): bool
     {
         try {
-            Mail::to($email)->send(new OtpMail($otpCode, $userName, $purpose));
-            Log::info("[OTP-EMAIL SUCCESS] Terkirim ke: $email");
-            return true;
+            $apiKey = env('MAILTRAP_API_KEY');
+
+            if (empty($apiKey)) {
+                // Fallback ke Laravel Mailer bawaan (.env SMTP/Log) jika API Key tidak diisi
+                Mail::to($email)->send(new OtpMail($otpCode, $userName, $purpose));
+                Log::info("[OTP-EMAIL SUCCESS] Terkirim ke: $email (Standard Mailer)");
+                return true;
+            }
+
+            $subject = $purpose === 'reset-password'
+                ? '[CatatDulu] Kode OTP Reset Password'
+                : '[CatatDulu] Kode OTP Verifikasi Akun';
+
+            // Render blade template ke bentuk HTML string
+            $htmlContent = view('emails.otp', [
+                'otpCode' => $otpCode,
+                'userName'  => $userName,
+                'purpose'   => $purpose
+            ])->render();
+
+            $response = Http::withToken($apiKey)
+                ->timeout(10)
+                ->post('https://send.api.mailtrap.io/api/send', [
+                    'from' => [
+                        'email' => env('MAIL_FROM_ADDRESS', 'hello@demomailtrap.co'),
+                        'name'  => env('MAIL_FROM_NAME', 'CatatDulu')
+                    ],
+                    'to' => [
+                        ['email' => $email]
+                    ],
+                    'subject' => $subject,
+                    'html'    => $htmlContent,
+                    'category'=> 'OTP Verification'
+                ]);
+
+            if ($response->successful()) {
+                Log::info("[OTP-EMAIL SUCCESS] Terkirim via Mailtrap API ke: $email");
+                return true;
+            }
+
+            Log::error('[OTP-EMAIL API FAILED] Response: ' . $response->body());
+            return false;
         } catch (\Exception $e) {
             Log::error('[OTP-EMAIL ERROR] ' . $e->getMessage());
             return false;
