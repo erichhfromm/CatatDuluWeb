@@ -2,82 +2,129 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\OtpMail;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class AuthController extends Controller
 {
+    // ─── PRIVATE HELPERS ─────────────────────────────────────────────────────────
+
     /**
-     * Helper Fungsi untuk Mengirim OTP via WhatsApp Gateway (Fonnte)
+     * Kirim OTP via WhatsApp menggunakan Fonnte.
+     * Return true jika berhasil / bypass lokal, false jika gagal.
      */
-    private function sendWhatsappOTP($phoneNumber, $otpCode)
+    private function sendWhatsappOTP(string $phoneNumber, string $otpCode): bool
     {
         try {
-            $token = env('FONNTE_TOKEN', 'TOKEN_FONNTE_KAMU_DISINI');
+            $token = env('FONNTE_TOKEN', '');
 
-            // KUNCI AMAN: Jika token belum diisi di .env, bypass otomatis agar testing lokal lancar kencang
+            // Bypass otomatis jika token belum dikonfigurasi (mode lokal)
             if (empty($token) || $token === 'TOKEN_FONNTE_KAMU_DISINI') {
-                \Log::info("Bypass WA OTP Lokal - Target: $phoneNumber | Kode OTP: $otpCode");
+                Log::info("[OTP-WA BYPASS] Target: $phoneNumber | Kode: $otpCode");
                 return true;
             }
 
-            // DIPERBAIKI: Menambahkan timeout(5) agar request dibatalkan jika Fonnte tidak merespon dalam 5 detik
-            $response = Http::timeout(5)->withHeaders([
+            $response = Http::timeout(10)->withHeaders([
                 'Authorization' => $token,
             ])->post('https://api.fonnte.com/send', [
                 'target'      => $phoneNumber,
-                'message'     => "[CatatDulu] Kode OTP Anda adalah: $otpCode. Demi keamanan, jangan sebarkan kode ini kepada siapapun.",
+                'message'     => "[CatatDulu] Kode OTP Anda adalah: *$otpCode*\n\nDemi keamanan, jangan sebarkan kode ini kepada siapapun. Kode berlaku selama 15 menit.",
                 'countryCode' => '62',
             ]);
 
-            return $response->successful();
+            if ($response->successful()) {
+                Log::info("[OTP-WA SUCCESS] Terkirim ke: $phoneNumber");
+                return true;
+            }
+
+            Log::warning("[OTP-WA FAILED] Respons Fonnte: " . $response->body());
+            return false;
+
         } catch (\Exception $e) {
-            \Log::error('Gagal mengirim WhatsApp OTP (Timeout/Error): ' . $e->getMessage());
-            return false; // Tetap return false agar register tidak ikut crash gantung
+            Log::error('[OTP-WA ERROR] ' . $e->getMessage());
+            return false;
         }
     }
+
+    /**
+     * Kirim OTP via Email menggunakan Laravel Mail.
+     * Return true jika berhasil, false jika gagal.
+     */
+    private function sendEmailOTP(string $email, string $otpCode, string $userName, string $purpose = 'register'): bool
+    {
+        try {
+            Mail::to($email)->send(new OtpMail($otpCode, $userName, $purpose));
+            Log::info("[OTP-EMAIL SUCCESS] Terkirim ke: $email");
+            return true;
+        } catch (\Exception $e) {
+            Log::error('[OTP-EMAIL ERROR] ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Kirim OTP ke semua channel yang dikonfigurasi (Email + WhatsApp).
+     * Selalu return true agar proses register tidak crash jika salah satu channel gagal.
+     */
+    private function sendOTP(string $email, string $phone, string $otpCode, string $userName, string $purpose = 'register'): void
+    {
+        // Channel 1: Email (selalu dicoba)
+        $emailSent = $this->sendEmailOTP($email, $otpCode, $userName, $purpose);
+
+        // Channel 2: WhatsApp via Fonnte (selalu dicoba)
+        $waSent = $this->sendWhatsappOTP($phone, $otpCode);
+
+        Log::info("[OTP DISPATCH] Email: " . ($emailSent ? 'OK' : 'FAIL') . " | WA: " . ($waSent ? 'OK' : 'FAIL') . " | Target: $email / $phone");
+    }
+
+    // ─── PUBLIC ENDPOINTS ─────────────────────────────────────────────────────────
 
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name'     => ['required', 'string', 'min:3', 'max:255'],
             'email'    => ['required', 'email', 'unique:users,email'],
-            'phone'    => ['required', 'string', 'min:10', 'max:20', 'unique:users,phone'], // Wajib diisi untuk WA OTP
+            'phone'    => ['required', 'string', 'min:10', 'max:20', 'unique:users,phone'],
             'password' => ['required', 'string', 'min:8', 'confirmed', 'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/'],
             'currency' => ['nullable', 'string', 'size:3'],
         ]);
 
-        // 1. Generate 6 digit angka OTP
-        $otpCode = rand(100000, 999999);
+        // 1. Generate 6 digit OTP
+        $otpCode = (string) rand(100000, 999999);
 
-        // 2. Simpan user dengan status is_active = false
+        // 2. Simpan user dengan status belum aktif
         $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'phone'    => $validated['phone'],
-            'password' => $validated['password'], // Otomatis ter-hash oleh cast di model
-            'currency' => $validated['currency'] ?? 'IDR',
-            'is_active' => false, // Akun dikunci sebelum verifikasi
-            'otp_code' => $otpCode,
+            'name'      => $validated['name'],
+            'email'     => $validated['email'],
+            'phone'     => $validated['phone'],
+            'password'  => $validated['password'],
+            'currency'  => $validated['currency'] ?? 'IDR',
+            'is_active' => false,
+            'otp_code'  => $otpCode,
         ]);
 
-        // 3. Kirim OTP langsung ke WhatsApp user
-        $this->sendWhatsappOTP($validated['phone'], $otpCode);
+        // 3. Kirim OTP ke Email + WhatsApp secara bersamaan
+        $this->sendOTP($user->email, $user->phone, $otpCode, $user->name, 'register');
 
-        // Tidak mengembalikan token Sanctum — memaksa user lewat alur verifikasi
+        // 4. Susun response
         $response = [
-            'message' => 'Pendaftaran berhasil! Silakan verifikasi kode OTP yang dikirim ke WhatsApp Anda.',
-            'user' => [
+            'message' => 'Pendaftaran berhasil! Kode OTP telah dikirim ke email dan WhatsApp Anda.',
+            'user'    => [
                 'id'    => $user->id,
                 'name'  => $user->name,
                 'email' => $user->email,
                 'phone' => $user->phone,
             ],
+            'otp_channels' => ['email', 'whatsapp'],
         ];
 
+        // Tampilkan OTP di response hanya saat development lokal
         if (env('APP_ENV') === 'local') {
             $response['dev_otp'] = $otpCode;
         }
@@ -86,7 +133,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Endpoint untuk memverifikasi OTP dari halaman Frontend
+     * Endpoint verifikasi OTP dari halaman frontend
      */
     public function verifyOtp(Request $request): JsonResponse
     {
@@ -99,24 +146,25 @@ class AuthController extends Controller
 
         if (!$user || $user->otp_code !== $validated['otp']) {
             return response()->json([
-                'message' => 'Kode OTP salah atau telah kadaluwarsa.',
+                'message' => 'Kode OTP salah atau telah kedaluwarsa.',
             ], 400);
         }
 
-        // Aktifkan akun dan hapus kode OTP dari database
+        // Aktifkan akun & hapus OTP dari database
         $user->update([
             'is_active' => true,
             'otp_code'  => null,
         ]);
 
-        // KUNCI UTAMA: Tidak membuat token di sini agar user diarahkan untuk login manual di frontend
+        Log::info("[OTP VERIFIED] Akun diaktifkan: {$user->email}");
+
         return response()->json([
-            'message' => 'Akun berhasil diverifikasi! Silakan gunakan menu login untuk masuk.',
+            'message' => 'Akun berhasil diverifikasi! Silakan masuk menggunakan email dan password Anda.',
         ], 200);
     }
 
     /**
-     * Endpoint untuk kirim ulang OTP jika tidak masuk
+     * Endpoint untuk kirim ulang OTP
      */
     public function resendOtp(Request $request): JsonResponse
     {
@@ -130,15 +178,19 @@ class AuthController extends Controller
             return response()->json(['message' => 'Akun ini sudah aktif.'], 400);
         }
 
-        $otpCode = rand(100000, 999999);
+        // Generate OTP baru
+        $otpCode = (string) rand(100000, 999999);
         $user->update(['otp_code' => $otpCode]);
 
-        $this->sendWhatsappOTP($user->phone, $otpCode);
+        // Kirim ke semua channel
+        $this->sendOTP($user->email, $user->phone, $otpCode, $user->name, 'register');
 
-        $response = ['message' => 'Kode OTP baru berhasil dikirim ulang ke WhatsApp.'];
+        $response = ['message' => 'Kode OTP baru telah dikirim ke email dan WhatsApp Anda.'];
+
         if (env('APP_ENV') === 'local') {
             $response['dev_otp'] = $otpCode;
         }
+
         return response()->json($response);
     }
 
@@ -151,41 +203,40 @@ class AuthController extends Controller
 
         if (!Auth::attempt($validated)) {
             return response()->json([
-                'message' => 'Invalid credentials',
+                'message' => 'Email atau password salah.',
             ], 401);
         }
 
         $user = Auth::user();
 
-        // PROTEKSI: Cek apakah user sudah verifikasi OTP
+        // Cek apakah user sudah verifikasi OTP
         if (!$user->is_active) {
-            Auth::logout(); // Gagalkan session/auth attempt
+            Auth::logout();
             return response()->json([
                 'message'      => 'Akun Anda belum aktif. Silakan lakukan verifikasi OTP terlebih dahulu.',
                 'requires_otp' => true,
                 'email'        => $user->email,
                 'phone'        => $user->phone,
-            ], 403); // 403 Forbidden
+            ], 403);
         }
 
-        // Berikan token akses ke dashboard hanya jika sudah aktif
         $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Login successful',
-            'user' => [
+            'message' => 'Login berhasil! Selamat datang kembali.',
+            'user'    => [
                 'id'    => $user->id,
                 'name'  => $user->name,
                 'email' => $user->email,
             ],
-            'token' => $token,
+            'token'   => $token,
         ]);
     }
 
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
-        return response()->json(['message' => 'Logged out successfully']);
+        return response()->json(['message' => 'Berhasil keluar.']);
     }
 
     public function me(Request $request): JsonResponse
@@ -199,30 +250,47 @@ class AuthController extends Controller
             'email' => ['required', 'email', 'exists:users,email'],
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
-        $resetToken = \Illuminate\Support\Str::random(60);
+        $user    = User::where('email', $validated['email'])->first();
+        $otpCode = (string) rand(100000, 999999);
 
-        return response()->json([
-            'message' => 'Password reset link sent to email',
-            'reset_token' => $resetToken,
-        ]);
+        // Simpan OTP di kolom otp_code yang sama
+        $user->update(['otp_code' => $otpCode]);
+
+        // Kirim OTP ke semua channel
+        $this->sendOTP($user->email, $user->phone, $otpCode, $user->name, 'reset-password');
+
+        $response = [
+            'message' => 'Kode OTP reset password telah dikirim ke email dan WhatsApp Anda.',
+        ];
+
+        if (env('APP_ENV') === 'local') {
+            $response['dev_otp'] = $otpCode;
+        }
+
+        return response()->json($response);
     }
 
     public function passwordResetConfirm(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'reset_token' => ['required', 'string'],
-            'password'    => ['required', 'string', 'min:8', 'confirmed', 'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/'],
+            'email'    => ['required', 'email', 'exists:users,email'],
+            'otp'      => ['required', 'string', 'size:6'],
+            'password' => ['required', 'string', 'min:8', 'confirmed', 'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/'],
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::where('email', $validated['email'])->first();
 
-        if (!$user) {
-            return response()->json(['message' => 'User not found'], 404);
+        if (!$user || $user->otp_code !== $validated['otp']) {
+            return response()->json(['message' => 'Kode OTP salah atau telah kedaluwarsa.'], 400);
         }
 
-        $user->update(['password' => $validated['password']]);
+        $user->update([
+            'password' => $validated['password'],
+            'otp_code' => null,
+        ]);
 
-        return response()->json(['message' => 'Password reset successfully']);
+        Log::info("[PASSWORD RESET] Password diperbarui untuk: {$user->email}");
+
+        return response()->json(['message' => 'Password berhasil diperbarui! Silakan masuk dengan password baru Anda.']);
     }
 }

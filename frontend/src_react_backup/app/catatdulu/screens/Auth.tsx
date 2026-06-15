@@ -229,9 +229,9 @@ export function RegisterScreen({ setRoute, setContextEmail, setContextPhone }: {
         return;
       }
 
-      toast.success('Pendaftaran sukses! Kode OTP dikirim ke WhatsApp.');
+      toast.success('Pendaftaran sukses! Kode OTP dikirim ke Email & WhatsApp Anda.');
       if (data.dev_otp) {
-        toast.info(`[DEV MODE] Kode OTP Anda: ${data.dev_otp}`, { duration: 15000 });
+        toast.info(`[DEV MODE] Kode OTP: ${data.dev_otp}`, { duration: 20000 });
       }
       setContextEmail(email);
       setContextPhone(phone);
@@ -273,6 +273,7 @@ export function RegisterScreen({ setRoute, setContextEmail, setContextPhone }: {
                 <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input type="tel" placeholder="08123456789" value={phone} onChange={(e) => setPhone(e.target.value)} className="pl-10" required />
               </div>
+              <p className="text-xs text-muted-foreground mt-1">OTP akan dikirim ke WhatsApp & email Anda.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -346,17 +347,17 @@ export function OTPRegisterVerifyScreen({ setRoute, email, phone }: { setRoute: 
     try {
       const response = await fetch('/api/resend-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ email }),
       });
       const data = await response.json();
       if (response.ok) {
-        toast.success('Kode OTP baru telah dikirim ke WhatsApp Anda!');
+        toast.success('Kode OTP baru telah dikirim ke Email & WhatsApp Anda!');
         if (data.dev_otp) {
-          toast.info(`[DEV MODE] Kode OTP Anda: ${data.dev_otp}`, { duration: 15000 });
+          toast.info(`[DEV MODE] Kode OTP: ${data.dev_otp}`, { duration: 20000 });
         }
       } else {
-        toast.error('Gagal mengirim ulang OTP.');
+        toast.error(data.message || 'Gagal mengirim ulang OTP.');
       }
     } catch (error) {
       toast.error('Gagal mengirim kode baru.');
@@ -374,7 +375,7 @@ export function OTPRegisterVerifyScreen({ setRoute, email, phone }: { setRoute: 
 
           <h1 className="mb-2 text-2xl font-bold">Verifikasi Aktivasi Akun 💬</h1>
           <p className="text-muted-foreground mb-8 text-sm">
-            Kode OTP telah dikirim ke nomor WhatsApp Anda <span className="font-semibold text-foreground">({phone || 'Nomor Anda'})</span>. Silakan masukkan kode tersebut di bawah ini.
+            Kode OTP telah dikirim ke <span className="font-semibold text-foreground">Email</span> dan nomor WhatsApp <span className="font-semibold text-foreground">({phone || 'Nomor Anda'})</span>. Masukkan salah satu kode yang Anda terima.
           </p>
 
           <form onSubmit={handleVerify} className="space-y-6">
@@ -423,12 +424,33 @@ export function OTPRegisterVerifyScreen({ setRoute, email, phone }: { setRoute: 
 
 export function ForgotPasswordScreen({ setRoute, setEmail }: { setRoute: (r: Route) => void; setEmail: (email: string) => void }) {
   const [emailInput, setEmailInput] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (emailInput) {
+    if (!emailInput || loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email: emailInput }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.message || 'Gagal mengirim OTP.');
+        return;
+      }
+      toast.success('Kode OTP telah dikirim ke Email & WhatsApp Anda!');
+      if (data.dev_otp) {
+        toast.info(`[DEV MODE] Kode OTP: ${data.dev_otp}`, { duration: 20000 });
+      }
       setEmail(emailInput);
       setRoute('otp-reset-password');
+    } catch (err) {
+      toast.error('Gagal terhubung ke server.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -442,7 +464,7 @@ export function ForgotPasswordScreen({ setRoute, setEmail }: { setRoute: (r: Rou
           </button>
 
           <h1 className="mb-2 text-2xl font-bold">Lupa Password? 🔐</h1>
-          <p className="text-muted-foreground mb-8 text-sm">Masukkan email terdaftar Anda. Kami akan mengirimkan kode OTP untuk mengatur ulang password Anda.</p>
+          <p className="text-muted-foreground mb-8 text-sm">Masukkan email terdaftar Anda. Kami akan mengirimkan kode OTP ke <strong>Email</strong> dan <strong>WhatsApp</strong> Anda untuk mengatur ulang password.</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -453,8 +475,8 @@ export function ForgotPasswordScreen({ setRoute, setEmail }: { setRoute: (r: Rou
               </div>
             </div>
 
-            <Button type="submit" size="lg" className="w-full mt-2" icon={<ArrowRight className="w-4 h-4" />}>
-              Kirim OTP
+            <Button type="submit" size="lg" className={`w-full mt-2 ${loading ? 'opacity-50 pointer-events-none' : ''}`} icon={<ArrowRight className="w-4 h-4" />}>
+              {loading ? 'Mengirim OTP...' : 'Kirim OTP'}
             </Button>
           </form>
         </div>
@@ -463,18 +485,40 @@ export function ForgotPasswordScreen({ setRoute, setEmail }: { setRoute: (r: Rou
   );
 }
 
-export function OTPResetPasswordScreen({ setRoute, email }: { setRoute: (r: Route) => void; email: string }) {
+export function OTPResetPasswordScreen({ setRoute, email, setResetOtp }: { setRoute: (r: Route) => void; email: string; setResetOtp: (otp: string) => void }) {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     if (otp.length !== 6 || loading) return;
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setRoute('create-new-password');
-    }, 1000);
+    // Simpan OTP ke parent state, lalu lanjut ke halaman buat password baru
+    // Verifikasi sesungguhnya dilakukan di step terakhir bersama password baru
+    setResetOtp(otp);
+    setRoute('create-new-password');
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    try {
+      const response = await fetch('/api/password-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        toast.success('Kode OTP baru telah dikirim ke Email & WhatsApp Anda!');
+        if (data.dev_otp) toast.info(`[DEV MODE] Kode OTP: ${data.dev_otp}`, { duration: 20000 });
+      } else {
+        toast.error(data.message || 'Gagal mengirim ulang OTP.');
+      }
+    } catch {
+      toast.error('Gagal terhubung ke server.');
+    } finally {
+      setResendLoading(false);
+    }
   };
 
   return (
@@ -488,7 +532,7 @@ export function OTPResetPasswordScreen({ setRoute, email }: { setRoute: (r: Rout
 
           <h1 className="mb-2 text-2xl font-bold">Verifikasi OTP ✉️</h1>
           <p className="text-muted-foreground mb-8 text-sm">
-            Kode OTP telah dikirim ke <span className="font-semibold text-foreground">{email || 'email Anda'}</span>. Silakan masukkan kode tersebut di bawah ini.
+            Kode OTP telah dikirim ke <span className="font-semibold text-foreground">{email || 'email Anda'}</span> dan <span className="font-semibold text-foreground">WhatsApp</span>. Masukkan salah satu kode yang Anda terima.
           </p>
 
           <form onSubmit={handleVerify} className="space-y-6">
@@ -521,12 +565,14 @@ export function OTPResetPasswordScreen({ setRoute, email }: { setRoute: (r: Rout
               className={`w-full ${otp.length !== 6 || loading ? 'opacity-50 pointer-events-none' : ''}`}
               icon={<ArrowRight className="w-4 h-4" />}
             >
-              {loading ? 'Memverifikasi...' : 'Verifikasi'}
+              {loading ? 'Memverifikasi...' : 'Lanjut Buat Password Baru'}
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
               Tidak menerima kode?{' '}
-              <button type="button" onClick={() => setOtp('')} className="text-primary font-semibold hover:underline">Kirim Ulang</button>
+              <button type="button" onClick={handleResend} disabled={resendLoading} className="text-primary font-semibold hover:underline disabled:opacity-50">
+                {resendLoading ? 'Mengirim...' : 'Kirim Ulang'}
+              </button>
             </p>
           </form>
         </div>
@@ -535,21 +581,42 @@ export function OTPResetPasswordScreen({ setRoute, email }: { setRoute: (r: Rout
   );
 }
 
-export function CreateNewPasswordScreen({ setRoute }: { setRoute: (r: Route) => void }) {
+export function CreateNewPasswordScreen({ setRoute, email, resetOtp }: { setRoute: (r: Route) => void; email: string; resetOtp: string }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword || password.length < 8 || loading) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const response = await fetch('/api/password-reset-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          email,
+          otp: resetOtp,
+          password,
+          password_confirmation: confirmPassword,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.message || 'Gagal menyimpan password baru.');
+        // Jika OTP salah, kembali ke halaman OTP
+        if (response.status === 400) setRoute('otp-reset-password');
+        return;
+      }
+      toast.success('Password berhasil diperbarui!');
       setRoute('password-changed-success');
-    }, 1200);
+    } catch {
+      toast.error('Gagal terhubung ke server.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const hasMinLength = password.length >= 8;

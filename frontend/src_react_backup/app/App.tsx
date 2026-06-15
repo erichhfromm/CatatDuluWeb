@@ -22,6 +22,7 @@ export function CatatDuluApp() {
 
   // State Penampung Sementara Data Lupa Password
   const [resetEmail, setResetEmail] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
 
   // ==========================================
   // 1. BLOK PROSES AUTENTIKASI (LUAR DASHBOARD)
@@ -67,11 +68,11 @@ export function CatatDuluApp() {
   }
 
   if (route === 'otp-reset-password') {
-    return <OTPResetPasswordScreen setRoute={setRoute} email={resetEmail} />;
+    return <OTPResetPasswordScreen setRoute={setRoute} email={resetEmail} setResetOtp={setResetOtp} />;
   }
 
   if (route === 'create-new-password') {
-    return <CreateNewPasswordScreen setRoute={setRoute} />;
+    return <CreateNewPasswordScreen setRoute={setRoute} email={resetEmail} resetOtp={resetOtp} />;
   }
 
   if (route === 'password-changed-success') {
