@@ -1,51 +1,152 @@
-import { Bell, CheckCheck, AlertTriangle, CheckCircle2, Info, Camera, Shield, Globe, Moon, Mail, Phone, MapPin, Key } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bell, CheckCheck, AlertTriangle, CheckCircle2, Info, Camera, Shield, Globe, Moon, Mail, Phone, MapPin, Key, Loader2 } from 'lucide-react';
 import { Card, Button, Badge, Input, Label, Avatar, SectionHeader } from '../ui';
-import { notifications } from '../data';
+import { profileApi, notificationsApi, type UserData, type ApiNotification } from '../api';
+import { toast } from 'sonner';
 
+// ── Notifications Screen ─────────────────────────────────────
 export function NotificationsScreen() {
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    notificationsApi.list()
+      .then((data) => setNotifications(data.data ?? []))
+      .catch(() => toast.error('Gagal memuat notifikasi.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleMarkRead = async (id: number) => {
+    try {
+      await notificationsApi.markRead(id);
+      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+    } catch { toast.error('Gagal menandai notifikasi.'); }
+  };
+
+  const handleMarkAll = async () => {
+    try {
+      await notificationsApi.markAllRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read_at: new Date().toISOString() })));
+      toast.success('Semua notifikasi ditandai dibaca.');
+    } catch { toast.error('Gagal menandai semua notifikasi.'); }
+  };
+
   const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
   const colorFor = (t: string) => t === 'success' ? 'text-emerald-600 bg-emerald-50' : t === 'warning' ? 'text-amber-600 bg-amber-50' : 'text-blue-600 bg-blue-50';
+  const unread = notifications.filter((n) => !n.read_at).length;
 
   return (
     <div className="space-y-6">
       <SectionHeader
         title="Notifikasi"
-        desc={`${notifications.filter((n) => !n.read).length} notifikasi baru`}
-        action={<Button variant="outline" icon={<CheckCheck className="w-4 h-4" />}>Tandai semua dibaca</Button>}
+        desc={`${unread} notifikasi baru`}
+        action={<Button variant="outline" icon={<CheckCheck className="w-4 h-4" />} onClick={handleMarkAll}>Tandai semua dibaca</Button>}
       />
 
-      <div className="flex gap-2 flex-wrap">
-        {['Semua', 'Belum dibaca', 'Transaksi', 'Budget', 'Sistem'].map((f, i) => (
-          <button key={f} className={`px-4 py-2 rounded-full text-xs font-semibold ${i === 0 ? 'bg-primary text-white' : 'border border-border hover:bg-muted'}`}>{f}</button>
-        ))}
-      </div>
-
-      <Card className="p-0 overflow-hidden">
-        {notifications.map((n) => {
-          const Icon = iconFor(n.type);
-          return (
-            <div key={n.id} className={`flex items-start gap-4 p-5 border-b border-border last:border-0 hover:bg-muted/30 ${!n.read ? 'bg-blue-50/30' : ''}`}>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorFor(n.type)}`}>
-                <Icon className="w-5 h-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="font-semibold text-sm">{n.title}</div>
-                  {!n.read && <div className="w-2 h-2 rounded-full bg-primary" />}
+      {loading ? (
+        <div className="flex items-center justify-center h-48 gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm">Memuat notifikasi...</span>
+        </div>
+      ) : notifications.length === 0 ? (
+        <Card className="p-12 flex flex-col items-center justify-center gap-3 text-center">
+          <Bell className="w-10 h-10 text-muted-foreground" />
+          <div>
+            <h3 className="mb-1">Tidak ada notifikasi</h3>
+            <p className="text-muted-foreground text-sm">Anda sudah up-to-date!</p>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          {notifications.map((n) => {
+            const Icon = iconFor(n.type);
+            const isUnread = !n.read_at;
+            return (
+              <div key={n.id} className={`flex items-start gap-4 p-5 border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${isUnread ? 'bg-blue-50/30' : ''}`} onClick={() => isUnread && handleMarkRead(n.id)}>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colorFor(n.type)}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5">{n.desc}</div>
-                <div className="text-[11px] text-muted-foreground mt-1">{n.time}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold text-sm">{n.title}</div>
+                    {isUnread && <div className="w-2 h-2 rounded-full bg-primary" />}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{n.message}</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">{new Date(n.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                </div>
+                {isUnread && <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleMarkRead(n.id); }}>Baca</Button>}
               </div>
-              <Button variant="ghost" size="sm">Lihat</Button>
-            </div>
-          );
-        })}
-      </Card>
+            );
+          })}
+        </Card>
+      )}
     </div>
   );
 }
 
+// ── Profile Screen ────────────────────────────────────────────
 export function ProfileScreen() {
+  const [user, setUser] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+
+  // Password change
+  const [oldPw, setOldPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [savingPw, setSavingPw] = useState(false);
+
+  useEffect(() => {
+    profileApi.me()
+      .then((data) => {
+        const u = data.data;
+        setUser(u);
+        setName(u?.name ?? '');
+        setPhone(u?.phone ?? '');
+      })
+      .catch(() => toast.error('Gagal memuat profil.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const result = await profileApi.update({ name, phone });
+      setUser(result.data);
+      toast.success('Profil berhasil diperbarui!');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Gagal memperbarui profil.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (newPw !== confirmPw) { toast.error('Konfirmasi password tidak cocok.'); return; }
+    if (newPw.length < 8) { toast.error('Password minimal 8 karakter.'); return; }
+    setSavingPw(true);
+    try {
+      await profileApi.changePassword({ current_password: oldPw, password: newPw, password_confirmation: confirmPw });
+      toast.success('Password berhasil diubah!');
+      setOldPw(''); setNewPw(''); setConfirmPw('');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Gagal mengubah password.');
+    } finally {
+      setSavingPw(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <span className="text-sm">Memuat profil...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <SectionHeader title="Profil Pengguna" desc="Kelola informasi pribadi dan preferensi akun Anda." />
@@ -54,16 +155,19 @@ export function ProfileScreen() {
         <Card className="p-6">
           <div className="flex flex-col items-center text-center">
             <div className="relative">
-              <Avatar name="Ariana Rizki" size={96} />
+              <Avatar name={user?.name ?? 'User'} size={96} />
               <button className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center border-2 border-white">
                 <Camera className="w-4 h-4" />
               </button>
             </div>
-            <h3 className="mt-4">Ariana Rizki</h3>
-            <p className="text-xs text-muted-foreground">ariana@catatdulu.id</p>
-            <Badge variant="info">Premium Member</Badge>
-            <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-border w-full text-center">
-              {[{ k: '124', v: 'Transaksi' }, { k: '6', v: 'Budget' }, { k: '2y', v: 'Member' }].map((s) => (
+            <h3 className="mt-4">{user?.name}</h3>
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+            <Badge variant="info" className="mt-2">Premium Member</Badge>
+            <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-border w-full text-center">
+              {[
+                { k: user?.name?.split(' ').length ?? '-', v: 'Kata Nama' },
+                { k: user?.currency ?? 'IDR', v: 'Mata Uang' },
+              ].map((s) => (
                 <div key={s.v}>
                   <div className="font-bold">{s.k}</div>
                   <div className="text-[11px] text-muted-foreground">{s.v}</div>
@@ -76,29 +180,37 @@ export function ProfileScreen() {
         <Card className="lg:col-span-2 p-6">
           <h3 className="mb-4">Informasi Pribadi</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><Label>Nama Lengkap</Label><Input defaultValue="Ariana Rizki" /></div>
-            <div><Label>Username</Label><Input defaultValue="@ariana" /></div>
+            <div>
+              <Label>Nama Lengkap</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
             <div>
               <Label>Email</Label>
-              <div className="relative"><Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-10" defaultValue="ariana@catatdulu.id" /></div>
+              <div className="relative">
+                <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input className="pl-10" value={user?.email ?? ''} disabled />
+              </div>
             </div>
             <div>
               <Label>Nomor Telepon</Label>
-              <div className="relative"><Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-10" defaultValue="+62 812 3456 7890" /></div>
+              <div className="relative">
+                <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input className="pl-10" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+62..." />
+              </div>
             </div>
             <div>
-              <Label>Lokasi</Label>
-              <div className="relative"><MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><Input className="pl-10" defaultValue="Jakarta, Indonesia" /></div>
-            </div>
-            <div><Label>Mata Uang</Label>
-              <select className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm">
-                <option>IDR — Rupiah</option><option>USD — Dollar</option><option>EUR — Euro</option>
-              </select>
+              <Label>Mata Uang</Label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input className="pl-10" value={user?.currency ?? 'IDR'} disabled />
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6 pt-6 border-t border-border">
             <Button variant="outline">Batal</Button>
-            <Button>Simpan Perubahan</Button>
+            <Button onClick={handleSaveProfile} disabled={saving}>
+              {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+            </Button>
           </div>
         </Card>
       </div>
@@ -107,18 +219,21 @@ export function ProfileScreen() {
         <h3 className="mb-1">Ubah Password</h3>
         <p className="text-xs text-muted-foreground mb-4">Pastikan menggunakan password yang kuat dan unik.</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div><Label required>Password Lama</Label><Input type="password" placeholder="••••••••" /></div>
-          <div><Label required>Password Baru</Label><Input type="password" placeholder="Min. 8 karakter" /></div>
-          <div><Label required>Konfirmasi Password</Label><Input type="password" placeholder="Ulangi password baru" /></div>
+          <div><Label required>Password Lama</Label><Input type="password" placeholder="••••••••" value={oldPw} onChange={(e) => setOldPw(e.target.value)} /></div>
+          <div><Label required>Password Baru</Label><Input type="password" placeholder="Min. 8 karakter" value={newPw} onChange={(e) => setNewPw(e.target.value)} /></div>
+          <div><Label required>Konfirmasi Password</Label><Input type="password" placeholder="Ulangi password baru" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} /></div>
         </div>
         <div className="flex justify-end mt-4">
-          <Button icon={<Key className="w-4 h-4" />}>Update Password</Button>
+          <Button icon={<Key className="w-4 h-4" />} onClick={handleChangePassword} disabled={savingPw || !oldPw || !newPw || !confirmPw}>
+            {savingPw ? 'Mengubah...' : 'Update Password'}
+          </Button>
         </div>
       </Card>
     </div>
   );
 }
 
+// ── Settings Screen (mostly UI) ───────────────────────────────
 export function SettingsScreen() {
   return (
     <div className="space-y-6">
@@ -151,14 +266,6 @@ export function SettingsScreen() {
                 ))}
               </div>
             </div>
-            <div>
-              <Label>Aksen</Label>
-              <div className="flex gap-2">
-                {['#1E3A8A', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'].map((c, i) => (
-                  <button key={c} className={`w-8 h-8 rounded-full border-2 ${i === 0 ? 'border-foreground' : 'border-transparent'}`} style={{ background: c }} />
-                ))}
-              </div>
-            </div>
             <ToggleRow label="Mode kompak" desc="Tampilkan lebih banyak data" />
           </div>
         </Card>
@@ -170,7 +277,6 @@ export function SettingsScreen() {
           </div>
           <div className="space-y-4">
             <ToggleRow label="Autentikasi 2 Faktor" desc="Lapisan keamanan ekstra" defaultChecked />
-            <ToggleRow label="Login dengan Biometrik" desc="Face ID / sidik jari" />
             <ToggleRow label="Notifikasi login" desc="Email saat login baru" defaultChecked />
             <Button variant="outline" className="w-full">Lihat Perangkat Aktif</Button>
           </div>
@@ -182,13 +288,13 @@ export function SettingsScreen() {
             <div><h4>Preferensi Notifikasi</h4><p className="text-[11px] text-muted-foreground">Atur notifikasi yang Anda terima</p></div>
           </div>
           <div className="space-y-3">
-            {[
+            {([
               ['Email notifikasi', 'Update mingguan dan ringkasan bulanan', true],
               ['Push notification', 'Notifikasi langsung di browser', true],
               ['Pengingat budget', 'Saat mencapai 80% / 100% budget', true],
               ['Pengingat tagihan', '3 hari sebelum jatuh tempo', false],
               ['Tips keuangan mingguan', 'Konten edukatif dari CatatDulu', false],
-            ].map(([t, d, c]) => <ToggleRow key={t as string} label={t as string} desc={d as string} defaultChecked={c as boolean} />)}
+            ] as [string, string, boolean][]).map(([t, d, c]) => <ToggleRow key={t} label={t} desc={d} defaultChecked={c} />)}
           </div>
         </Card>
 
