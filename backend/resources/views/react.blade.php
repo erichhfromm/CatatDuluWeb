@@ -10,8 +10,8 @@
       <meta name="robots" content="noindex, nofollow" />
       <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
       
-      <script type="module" crossorigin src="/assets/index-CEsrP4wE.js"></script>
-      <link rel="stylesheet" crossorigin href="/assets/index-DHCS38RL.css">
+      <script type="module" crossorigin src="/assets/index-WCUg3nn_.js"></script>
+      <link rel="stylesheet" crossorigin href="/assets/index-Dpqx2x69.css">
     </head>
 
     <body>

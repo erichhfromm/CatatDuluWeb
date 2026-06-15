@@ -6,8 +6,44 @@ import { budgets, expenseByCategory, monthlyTrend, formatIDR } from '../data';
 
 export function BudgetScreen() {
   const [open, setOpen] = useState(false);
-  const totalAlloc = budgets.reduce((a, b) => a + b.allocated, 0);
-  const totalSpent = budgets.reduce((a, b) => a + b.spent, 0);
+  const [localBudgets, setLocalBudgets] = useState(budgets);
+  const [categoryName, setCategoryName] = useState('');
+  const [allocatedAmount, setAllocatedAmount] = useState('');
+  const [period, setPeriod] = useState('Bulanan');
+  const [selectedColor, setSelectedColor] = useState('#1E3A8A');
+
+  const totalAlloc = localBudgets.reduce((a, b) => a + b.allocated, 0);
+  const totalSpent = localBudgets.reduce((a, b) => a + b.spent, 0);
+
+  const handleSaveBudget = () => {
+    if (!categoryName.trim() || !allocatedAmount) return;
+
+    const amountNum = parseFloat(allocatedAmount);
+    if (isNaN(amountNum) || amountNum <= 0) return;
+
+    const newBudget = {
+      id: 'b' + (localBudgets.length + 1) + '-' + Date.now(),
+      category: categoryName.trim(),
+      allocated: amountNum,
+      spent: 0,
+      color: selectedColor,
+    };
+
+    setLocalBudgets([...localBudgets, newBudget]);
+
+    // Reset Form
+    setCategoryName('');
+    setAllocatedAmount('');
+    setPeriod('Bulanan');
+    setSelectedColor('#1E3A8A');
+    setOpen(false);
+  };
+
+  const handleDeleteBudget = (id: string) => {
+    if (confirm('Apakah Anda yakin ingin menghapus anggaran ini?')) {
+      setLocalBudgets(localBudgets.filter(b => b.id !== id));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -19,13 +55,13 @@ export function BudgetScreen() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="Total Anggaran" value={formatIDR(totalAlloc)} icon={<Target className="w-5 h-5" />} accent="primary" />
-        <StatCard label="Sudah Terpakai" value={formatIDR(totalSpent)} delta={`${Math.round((totalSpent / totalAlloc) * 100)}%`} icon={<TrendingDown className="w-5 h-5" />} accent="warning" />
-        <StatCard label="Sisa Anggaran" value={formatIDR(totalAlloc - totalSpent)} delta="+22%" icon={<TrendingUp className="w-5 h-5" />} accent="success" />
+        <StatCard label="Sudah Terpakai" value={formatIDR(totalSpent)} delta={totalAlloc > 0 ? `${Math.round((totalSpent / totalAlloc) * 100)}%` : '0%'} icon={<TrendingDown className="w-5 h-5" />} accent="warning" />
+        <StatCard label="Sisa Anggaran" value={formatIDR(Math.max(0, totalAlloc - totalSpent))} delta="+22%" icon={<TrendingUp className="w-5 h-5" />} accent="success" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {budgets.map((b) => {
-          const pct = Math.round((b.spent / b.allocated) * 100);
+        {localBudgets.map((b) => {
+          const pct = b.allocated > 0 ? Math.round((b.spent / b.allocated) * 100) : 0;
           const status = pct > 90 ? 'danger' : pct > 70 ? 'warning' : 'success';
           return (
             <Card key={b.id} hover className="p-5">
@@ -52,8 +88,12 @@ export function BudgetScreen() {
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Sisa: <b className="text-foreground">{formatIDR(b.allocated - b.spent)}</b></span>
-                <button className="text-primary font-semibold hover:underline">Detail</button>
+                <span className="text-muted-foreground">Sisa: <b className="text-foreground">{formatIDR(Math.max(0, b.allocated - b.spent))}</b></span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleDeleteBudget(b.id)} className="text-red-500 font-semibold hover:underline">Hapus</button>
+                  <span className="text-muted-foreground/30">|</span>
+                  <button className="text-primary font-semibold hover:underline">Detail</button>
+                </div>
               </div>
             </Card>
           );
@@ -67,31 +107,38 @@ export function BudgetScreen() {
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>Batal</Button>
-            <Button onClick={() => setOpen(false)}>Simpan Budget</Button>
+            <Button onClick={handleSaveBudget} disabled={!categoryName.trim() || !allocatedAmount}>Simpan Budget</Button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
             <Label required>Nama Kategori</Label>
-            <Input placeholder="Contoh: Makanan & Minuman" />
+            <Input placeholder="Contoh: Makanan & Minuman" value={categoryName} onChange={(e) => setCategoryName(e.target.value)} />
           </div>
           <div>
             <Label required>Anggaran Bulanan</Label>
-            <Input type="number" placeholder="2000000" />
+            <Input type="number" placeholder="2000000" value={allocatedAmount} onChange={(e) => setAllocatedAmount(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Periode</Label>
-              <select className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm">
-                <option>Bulanan</option><option>Mingguan</option><option>Tahunan</option>
+              <select className="w-full h-10 px-3 rounded-lg border border-border bg-card text-sm" value={period} onChange={(e) => setPeriod(e.target.value)}>
+                <option value="Bulanan">Bulanan</option>
+                <option value="Mingguan">Mingguan</option>
+                <option value="Tahunan">Tahunan</option>
               </select>
             </div>
             <div>
               <Label>Warna</Label>
               <div className="flex gap-2 h-10 items-center">
                 {['#1E3A8A', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'].map((c) => (
-                  <button key={c} className="w-7 h-7 rounded-full border-2 border-white shadow" style={{ background: c }} />
+                  <button
+                    key={c}
+                    className={`w-7 h-7 rounded-full border-2 shadow transition-all ${selectedColor === c ? 'border-primary scale-110' : 'border-white hover:scale-105'}`}
+                    style={{ background: c }}
+                    onClick={() => setSelectedColor(c)}
+                  />
                 ))}
               </div>
             </div>
