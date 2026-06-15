@@ -1,0 +1,147 @@
+html {
+  font-size: var(--font-size, 14px);
+}
+
+body {
+  min-height: 100vh;
+}
+
+.animate-in {
+  animation: fadeUp 0.5s ease both;
+}
+
+.float-soft {
+  animation: floatSoft 2.5s ease-in-out infinite;
+}
+
+.pulse-dot {
+  animation: pulseDot 1.2s ease-in-out infinite;
+}
+
+.delay-150 {
+  animation-delay: 0.15s;
+}
+
+.delay-300 {
+  animation-delay: 0.3s;
+}
+
+.chart-bars {
+  height: 280px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(42px, 1fr));
+  align-items: end;
+  gap: 18px;
+  border-bottom: 1px solid var(--border);
+  background-image: linear-gradient(to top, rgba(229, 231, 235, 0.6) 1px, transparent 1px);
+  background-size: 100% 56px;
+  padding: 18px 12px 0;
+}
+
+.chart-col {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  align-items: end;
+}
+
+.chart-pair {
+  height: 220px;
+  display: flex;
+  align-items: end;
+  gap: 6px;
+}
+
+.chart-bar {
+  width: clamp(12px, 2.4vw, 28px);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.chart-col span,
+.net-line small {
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.donut {
+  width: 180px;
+  height: 180px;
+  margin: 8px auto;
+  border-radius: 999px;
+  background: var(--segments);
+  position: relative;
+}
+
+.donut::after {
+  content: "";
+  position: absolute;
+  inset: 48px;
+  border-radius: inherit;
+  background: var(--card);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.net-line {
+  height: 220px;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  align-items: end;
+  gap: 14px;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 10px 0;
+}
+
+.net-line div {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.net-line span {
+  width: clamp(18px, 4vw, 34px);
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, #1E3A8A, #3B82F6);
+  box-shadow: 0 12px 24px rgba(30, 58, 138, 0.14);
+}
+
+.modal:not(.hidden) {
+  display: flex;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes floatSoft {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .chart-bars {
+    gap: 10px;
+    overflow-x: auto;
+  }
+}
