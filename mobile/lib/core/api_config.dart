@@ -1,5 +1,15 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 class ApiConfig {
-  // Use http://10.0.2.2:8000 for Android emulator accessing local laragon/artisan server.
-  // Use http://localhost:8000 (or the actual local IP) for iOS simulator, web or physical devices.
-  static const String baseUrl = 'http://10.0.2.2:8000/api';
+  static String get baseUrl {
+    if (kIsWeb) {
+      return 'http://localhost:8000/api';
+    }
+    // Dynamic IP mapping for Android emulator (10.0.2.2) vs other environments (localhost/127.0.0.1)
+    if (Platform.isAndroid) {
+      return 'http://10.0.2.2:8000/api';
+    }
+    return 'http://127.0.0.1:8000/api';
+  }
 }
