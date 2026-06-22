@@ -241,22 +241,30 @@ class AuthController extends Controller
 
     public function login(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'email'    => ['required', 'email'],
+        $request->validate([
             'password' => ['required', 'string'],
         ]);
 
-        if (!Auth::attempt($validated)) {
+        // Mendukung field 'login' (mobile: email atau nomor HP) ATAU 'email' (React web)
+        $loginInput = $request->input('login') ?? $request->input('email');
+
+        if (empty($loginInput)) {
+            return response()->json(['message' => 'Email atau nomor HP diperlukan.'], 422);
+        }
+
+        // Tentukan apakah input adalah email atau nomor HP
+        $field = filter_var($loginInput, FILTER_VALIDATE_EMAIL) ? 'email' : 'phone';
+
+        $user = \App\Models\User::where($field, $loginInput)->first();
+
+        if (!$user || !\Illuminate\Support\Facades\Hash::check($request->input('password'), $user->password)) {
             return response()->json([
-                'message' => 'Email atau password salah.',
+                'message' => 'Email/nomor HP atau password salah.',
             ], 401);
         }
 
-        $user = Auth::user();
-
         // Cek apakah user sudah verifikasi OTP
         if (!$user->is_active) {
-            Auth::logout();
             return response()->json([
                 'message'      => 'Akun Anda belum aktif. Silakan lakukan verifikasi OTP terlebih dahulu.',
                 'requires_otp' => true,
