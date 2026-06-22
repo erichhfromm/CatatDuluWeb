@@ -1,11 +1,12 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  LayoutDashboard, ArrowDownCircle, ArrowUpCircle, PieChart, Wallet, FileText,
-  Bell, User, Settings, LogOut, Search, Sparkles, ChevronDown, Palette, AlertTriangle, Menu, X,
+  LayoutDashboard, TrendingUp, TrendingDown, PieChart, Wallet, FileText,
+  Bell, User, Settings, LogOut, Search, Sparkles, ChevronDown, Menu, X,
 } from 'lucide-react';
+import { profileApi, notificationsApi, type UserData } from './api';
 
-// TAMBAHKAN 'otp-register-verify' ke dalam daftar tipe Route agar TypeScript tidak error
+// Route types (tanpa route system/debug)
 export type Route =
   | 'splash' | 'login' | 'register' | 'otp-register-verify'
   | 'forgot-password' | 'otp-reset-password' | 'create-new-password' | 'password-changed-success'
@@ -16,25 +17,29 @@ export type Route =
 interface Props {
   route: Route;
   setRoute: (r: Route) => void;
+  onLogout?: () => void;
   children: ReactNode;
 }
 
 const navItems: { key: Route; label: string; icon: any; group?: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
-  { key: 'income', label: 'Income', icon: ArrowDownCircle, group: 'Manage' },
-  { key: 'expense', label: 'Expense', icon: ArrowUpCircle, group: 'Manage' },
-  { key: 'budget', label: 'Budget', icon: Wallet, group: 'Manage' },
-  { key: 'analytics', label: 'Analytics', icon: PieChart, group: 'Insights' },
-  { key: 'reports', label: 'Reports', icon: FileText, group: 'Insights' },
-  { key: 'notifications', label: 'Notifications', icon: Bell, group: 'Account' },
-  { key: 'profile', label: 'Profile', icon: User, group: 'Account' },
-  { key: 'settings', label: 'Settings', icon: Settings, group: 'Account' },
-  { key: 'design-system', label: 'Design System', icon: Palette, group: 'System' },
-  { key: 'empty', label: 'Empty States', icon: Sparkles, group: 'System' },
-  { key: 'error', label: 'Error States', icon: AlertTriangle, group: 'System' },
+  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'Ringkasan' },
+  { key: 'income', label: 'Pemasukan', icon: TrendingUp, group: 'Kelola' },
+  { key: 'expense', label: 'Pengeluaran', icon: TrendingDown, group: 'Kelola' },
+  { key: 'budget', label: 'Anggaran', icon: Wallet, group: 'Kelola' },
+  { key: 'analytics', label: 'Analisis', icon: PieChart, group: 'Wawasan' },
+  { key: 'reports', label: 'Laporan', icon: FileText, group: 'Wawasan' },
+  { key: 'notifications', label: 'Notifikasi', icon: Bell, group: 'Akun' },
+  { key: 'profile', label: 'Profil', icon: User, group: 'Akun' },
+  { key: 'settings', label: 'Pengaturan', icon: Settings, group: 'Akun' },
 ];
 
-function SidebarContent({ route, setRoute, onNavigate }: { route: Route; setRoute: (r: Route) => void; onNavigate?: () => void }) {
+function SidebarContent({ route, setRoute, onNavigate, user, unread }: {
+  route: Route;
+  setRoute: (r: Route) => void;
+  onNavigate?: () => void;
+  user: UserData | null;
+  unread: number;
+}) {
   const groups = Array.from(new Set(navItems.map((i) => i.group!)));
   return (
     <>
@@ -61,13 +66,20 @@ function SidebarContent({ route, setRoute, onNavigate }: { route: Route; setRout
                     key={item.key}
                     onClick={() => { setRoute(item.key); onNavigate?.(); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${active
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
-                        : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                      }`}
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-semibold'
+                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                    }`}
                   >
                     <Icon className={`w-[18px] h-[18px] ${active ? 'text-primary' : ''}`} />
                     <span>{item.label}</span>
-                    {active && <motion.div layoutId="nav-indicator" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+                    {item.key === 'notifications' && unread > 0 && (
+                      <span className="ml-auto bg-destructive text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                        {unread > 9 ? '9+' : unread}
+                      </span>
+                    )}
+                    {active && item.key !== 'notifications' && (
+                      <motion.div layoutId="nav-indicator" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />
+                    )}
                   </button>
                 );
               })}
@@ -82,7 +94,7 @@ function SidebarContent({ route, setRoute, onNavigate }: { route: Route; setRout
             <Sparkles className="w-4 h-4" />
             <div className="text-xs font-semibold">Upgrade to Pro</div>
           </div>
-          <div className="text-[11px] text-white/80 mb-3">Unlock advanced analytics & unlimited reports</div>
+          <div className="text-[11px] text-white/80 mb-3">Unlock advanced analytics &amp; unlimited reports</div>
           <button className="w-full bg-white text-primary text-xs font-semibold py-1.5 rounded-md hover:bg-white/90">Upgrade</button>
         </div>
       </div>
@@ -90,20 +102,47 @@ function SidebarContent({ route, setRoute, onNavigate }: { route: Route; setRout
   );
 }
 
-export function Layout({ route, setRoute, children }: Props) {
+export function Layout({ route, setRoute, onLogout, children }: Props) {
   const [open, setOpen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [user, setUser] = useState<UserData | null>(null);
+  const [unread, setUnread] = useState(0);
+
+  // Load user info & notification count
+  useEffect(() => {
+    profileApi.me()
+      .then((data) => {
+        setUser(data.data ?? null);
+        if (data.data?.theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    notificationsApi.unreadCount()
+      .then((data) => setUnread(data.unread_count ?? 0))
+      .catch(() => {});
+  }, [route]); // refresh on route change
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
+  const firstName = user?.name?.split(' ')[0] ?? 'Pengguna';
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
+    : 'U';
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex w-[280px] bg-sidebar border-r border-sidebar-border flex-col h-screen sticky top-0 shrink-0">
-        <SidebarContent route={route} setRoute={setRoute} />
+        <SidebarContent route={route} setRoute={setRoute} user={user} unread={unread} />
       </aside>
 
       {/* Mobile Drawer */}
@@ -119,7 +158,7 @@ export function Layout({ route, setRoute, children }: Props) {
               initial={{ x: -300 }} animate={{ x: 0 }} exit={{ x: -300 }} transition={{ type: 'spring', damping: 28, stiffness: 280 }}
               className="fixed top-0 left-0 bottom-0 w-[280px] max-w-[85vw] bg-sidebar border-r border-sidebar-border z-50 flex flex-col lg:hidden"
             >
-              <SidebarContent route={route} setRoute={setRoute} onNavigate={() => setOpen(false)} />
+              <SidebarContent route={route} setRoute={setRoute} onNavigate={() => setOpen(false)} user={user} unread={unread} />
             </motion.aside>
           </>
         )}
@@ -140,7 +179,7 @@ export function Layout({ route, setRoute, children }: Props) {
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
-                placeholder="Search transactions, categories, reports..."
+                placeholder="Cari transaksi, kategori, laporan..."
                 className="w-full h-10 pl-10 pr-4 rounded-lg border border-border bg-muted/40 focus:bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
               />
             </div>
@@ -162,18 +201,38 @@ export function Layout({ route, setRoute, children }: Props) {
             >
               <Search className="w-4 h-4" />
             </button>
-            <button onClick={() => setRoute('notifications')} className="relative w-10 h-10 rounded-lg border border-border flex items-center justify-center hover:bg-muted">
+
+            {/* Notification bell with badge */}
+            <button
+              onClick={() => setRoute('notifications')}
+              className="relative w-10 h-10 rounded-lg border border-border flex items-center justify-center hover:bg-muted"
+            >
               <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-destructive" />
+              {unread > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-destructive border-2 border-card" />
+              )}
             </button>
-            <button onClick={() => setRoute('login')} className="hidden sm:flex w-10 h-10 rounded-lg border border-border items-center justify-center hover:bg-muted" title="Logout">
+
+            {/* Logout button */}
+            <button
+              onClick={onLogout}
+              className="hidden sm:flex w-10 h-10 rounded-lg border border-border items-center justify-center hover:bg-muted hover:text-destructive transition-colors"
+              title="Logout"
+            >
               <LogOut className="w-4 h-4" />
             </button>
-            <button onClick={() => setRoute('profile')} className="flex items-center gap-2 pl-1 pr-1 sm:pl-2 sm:pr-3 py-1 sm:py-1.5 rounded-lg sm:border border-border hover:bg-muted">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent text-white text-xs font-semibold flex items-center justify-center">AR</div>
+
+            {/* User avatar/name */}
+            <button
+              onClick={() => setRoute('profile')}
+              className="flex items-center gap-2 pl-1 pr-1 sm:pl-2 sm:pr-3 py-1 sm:py-1.5 rounded-lg sm:border border-border hover:bg-muted"
+            >
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent text-white text-xs font-semibold flex items-center justify-center">
+                {initials}
+              </div>
               <div className="text-left hidden xl:block">
-                <div className="text-xs font-semibold leading-tight">Ariana Rizki</div>
-                <div className="text-[10px] text-muted-foreground leading-tight">Premium</div>
+                <div className="text-xs font-semibold leading-tight">{firstName}</div>
+                <div className="text-[10px] text-muted-foreground leading-tight">{user ? 'Premium' : '...'}</div>
               </div>
               <ChevronDown className="w-3 h-3 text-muted-foreground hidden xl:block" />
             </button>
@@ -191,7 +250,7 @@ export function Layout({ route, setRoute, children }: Props) {
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   autoFocus
-                  placeholder="Search..."
+                  placeholder="Cari..."
                   className="w-full h-10 pl-10 pr-4 rounded-lg border border-border bg-muted/40 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>

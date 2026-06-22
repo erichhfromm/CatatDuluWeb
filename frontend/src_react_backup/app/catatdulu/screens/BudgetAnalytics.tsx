@@ -1,35 +1,57 @@
-import { useState, useEffect } from 'react';
-import { Plus, Target, TrendingUp, TrendingDown, Lightbulb, AlertCircle, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, Target, TrendingUp, TrendingDown, Lightbulb, AlertCircle, Sparkles, Loader2, Trash2, Calendar } from 'lucide-react';
 import { BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, LineChart, Line } from 'recharts';
 import { Card, Button, Badge, Modal, Input, Label, SectionHeader, StatCard } from '../ui';
-import { formatIDR, budgetsApi, type ApiBudget } from '../api';
-import { expenseByCategory, monthlyTrend } from '../data';
+import { formatIDR, budgetsApi, analyticsApi, categoriesApi, type ApiBudget, type ApiMonthlyTrend, type ApiCategoryBreakdown, type ApiCategory } from '../api';
 import { toast } from 'sonner';
 
 export function BudgetScreen() {
   const [open, setOpen] = useState(false);
   const [budgets, setBudgets] = useState<ApiBudget[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<ApiCategory[]>([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [budgetName, setBudgetName] = useState('');
   const [allocatedAmount, setAllocatedAmount] = useState('');
   const [period, setPeriod] = useState<'daily'|'weekly'|'monthly'|'quarterly'|'yearly'>('monthly');
   const [selectedColor, setSelectedColor] = useState('#1E3A8A');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
-  const fetchBudgets = async () => {
+  const fetchBudgets = useCallback(async (fDate = fromDate, tDate = toDate) => {
+    setLoading(true);
     try {
-      const data = await budgetsApi.list();
+      const data = await budgetsApi.list({
+        from_date: fDate || undefined,
+        to_date: tDate || undefined,
+      });
       setBudgets(data.data ?? []);
     } catch {
       toast.error('Gagal memuat daftar budget.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [fromDate, toDate]);
 
-  useEffect(() => { fetchBudgets(); }, []);
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchBudgets(fromDate, toDate);
+    }, 300);
 
-  const totalAlloc = budgets.reduce((a, b) => a + (b.amount ?? 0), 0);
+    return () => clearTimeout(delayDebounceFn);
+  }, [fromDate, toDate, fetchBudgets]);
+
+  useEffect(() => {
+    categoriesApi.list()
+      .then((data) => setCategoryOptions(data.data ?? []))
+      .catch(() => toast.error('Gagal memuat opsi kategori.'));
+  }, []);
+
+  const totalAlloc = budgets.reduce((a, b) => a + Number(b.amount ?? 0), 0);
+  const totalSpent = budgets.reduce((a, b) => a + Number(b.spent_amount ?? 0), 0);
+  const totalRemaining = budgets.reduce((a, b) => a + Number(b.remaining_amount ?? 0), 0);
+  const overallPercentage = totalAlloc > 0 ? Math.min(100, Math.round((totalSpent / totalAlloc) * 100)) : 0;
 
   const handleSaveBudget = async () => {
     if (!budgetName.trim() || !allocatedAmount) return;
@@ -38,21 +60,53 @@ export function BudgetScreen() {
       toast.error('Nominal anggaran tidak valid.');
       return;
     }
+    if (selectedCategoryIds.length === 0) {
+      toast.error('Pilih minimal satu kategori untuk budget ini.');
+      return;
+    }
     setSaving(true);
     try {
       const now = new Date();
-      const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      const fmt = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
+      
+      let startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      let endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+      if (period === 'weekly') {
+        const day = now.getDay() || 7; 
+        if (day !== 1) now.setHours(-24 * (day - 1));
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000);
+        endDate.setHours(23, 59, 59);
+      } else if (period === 'daily') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      } else if (period === 'yearly') {
+        startDate = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+      }
+
+      // Format pad function to avoid UTC issues
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const fmtLocal = (d: Date) => 
+        `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      
+      const categoriesPayload = selectedCategoryIds.map((catId) => ({
+        category_id: catId,
+        allocated_amount: amountNum / selectedCategoryIds.length,
+      }));
+
       await budgetsApi.create({
         name: budgetName.trim(),
         amount: amountNum,
         period,
-        start_date: fmt(now),
-        end_date: fmt(endDate),
+        start_date: fmtLocal(startDate),
+        end_date: fmtLocal(endDate),
         color: selectedColor,
+        categories: categoriesPayload,
       });
       toast.success('Budget berhasil dibuat!');
       setBudgetName(''); setAllocatedAmount(''); setPeriod('monthly'); setSelectedColor('#1E3A8A');
+      setSelectedCategoryIds([]);
       setOpen(false);
       fetchBudgets();
     } catch (e: any) {
@@ -73,7 +127,7 @@ export function BudgetScreen() {
     }
   };
 
-  if (loading) {
+  if (loading && budgets.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
@@ -92,9 +146,44 @@ export function BudgetScreen() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="Total Anggaran" value={formatIDR(totalAlloc)} icon={<Target className="w-5 h-5" />} accent="primary" />
-        <StatCard label="Sudah Terpakai" value={formatIDR(0)} delta="0%" icon={<TrendingDown className="w-5 h-5" />} accent="warning" />
-        <StatCard label="Sisa Anggaran" value={formatIDR(totalAlloc)} icon={<TrendingUp className="w-5 h-5" />} accent="success" />
+        <StatCard label="Sudah Terpakai" value={formatIDR(totalSpent)} delta={`${overallPercentage}%`} icon={<TrendingDown className="w-5 h-5" />} accent="warning" />
+        <StatCard label="Sisa Anggaran" value={formatIDR(totalRemaining)} icon={<TrendingUp className="w-5 h-5" />} accent="success" />
       </div>
+
+      <Card className="p-4 flex flex-wrap gap-4 items-center">
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Filter Tanggal:</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Dari:</span>
+          <Input 
+            type="date" 
+            className="w-36 h-10 text-xs" 
+            value={fromDate} 
+            onChange={(e) => setFromDate(e.target.value)} 
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Sampai:</span>
+          <Input 
+            type="date" 
+            className="w-36 h-10 text-xs" 
+            value={toDate} 
+            onChange={(e) => setToDate(e.target.value)} 
+          />
+        </div>
+        {(fromDate || toDate) && (
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => { setFromDate(''); setToDate(''); }}
+            className="text-xs text-red-500 hover:text-red-700"
+          >
+            Reset
+          </Button>
+        )}
+      </Card>
 
       {budgets.length === 0 ? (
         <Card className="p-12 flex flex-col items-center justify-center gap-4 text-center">
@@ -111,6 +200,8 @@ export function BudgetScreen() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {budgets.map((b) => {
             const color = b.color ?? '#3B82F6';
+            const spent = b.spent_amount ?? 0;
+            const pct = Math.min(100, b.percentage_used ?? 0);
             return (
               <Card key={b.id} hover className="p-5">
                 <div className="flex items-start justify-between mb-4">
@@ -131,13 +222,18 @@ export function BudgetScreen() {
                   <div className="text-xs text-muted-foreground">Total anggaran</div>
                 </div>
 
-                <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
-                  <div className="h-full rounded-full transition-all" style={{ width: '0%', background: color }} />
+                <div className="h-2 bg-muted rounded-full overflow-hidden mb-2">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                </div>
+
+                <div className="flex justify-between items-center text-[11px] text-muted-foreground mb-4">
+                  <span>Terpakai: <b>{formatIDR(spent)}</b> ({pct}%)</span>
+                  <span>Sisa: <b>{formatIDR(b.remaining_amount ?? 0)}</b></span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Periode: <b className="text-foreground">{b.start_date?.slice(0, 10)} – {b.end_date?.slice(0, 10)}</b></span>
-                  <button onClick={() => handleDeleteBudget(b.id)} className="flex items-center gap-1 text-red-500 font-semibold hover:underline">
+                  <span className="text-muted-foreground flex-1 truncate mr-2">Periode: <b className="text-foreground">{b.start_date?.slice(0, 10)} – {b.end_date?.slice(0, 10)}</b></span>
+                  <button onClick={() => handleDeleteBudget(b.id)} className="flex items-center gap-1 text-red-500 font-semibold hover:underline flex-shrink-0">
                     <Trash2 className="w-3 h-3" /> Hapus
                   </button>
                 </div>
@@ -168,6 +264,34 @@ export function BudgetScreen() {
           <div>
             <Label required>Total Anggaran (Rp)</Label>
             <Input type="number" placeholder="2000000" value={allocatedAmount} onChange={(e) => setAllocatedAmount(e.target.value)} />
+          </div>
+          <div>
+            <Label required>Kategori yang Dipantau</Label>
+            <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border border-border rounded-lg bg-muted/20">
+              {categoryOptions.map((cat) => {
+                const isSelected = selectedCategoryIds.includes(cat.id);
+                return (
+                  <label key={cat.id} className="flex items-center gap-2 text-xs cursor-pointer p-1.5 hover:bg-muted rounded transition-colors">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border text-primary focus:ring-primary w-4 h-4"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedCategoryIds(prev => 
+                          isSelected 
+                            ? prev.filter(id => id !== cat.id) 
+                            : [...prev, cat.id]
+                        );
+                      }}
+                    />
+                    <span className="truncate">{cat.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {categoryOptions.length === 0 && (
+              <p className="text-[11px] text-muted-foreground mt-1">Belum ada kategori pengeluaran tersedia.</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -201,6 +325,32 @@ export function BudgetScreen() {
 }
 
 export function AnalyticsScreen() {
+  const [trendData, setTrendData] = useState<ApiMonthlyTrend[]>([]);
+  const [categoryData, setCategoryData] = useState<ApiCategoryBreakdown[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      analyticsApi.monthlyTrend(6),
+      analyticsApi.categoryBreakdown('expense'),
+    ])
+      .then(([trend, cats]) => {
+        setTrendData(trend ?? []);
+        setCategoryData(cats ?? []);
+      })
+      .catch(() => toast.error('Gagal memuat data analitik.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 gap-2 text-muted-foreground">
+        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <span className="text-sm">Memuat analitik...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <SectionHeader title="Financial Analytics" desc="Pahami arus kas dan pola keuangan Anda dengan visualisasi mendalam." />
@@ -209,38 +359,52 @@ export function AnalyticsScreen() {
         <Card className="lg:col-span-2 p-6">
           <h3 className="mb-1">Tren Bulanan</h3>
           <p className="text-xs text-muted-foreground mb-4">Pemasukan vs pengeluaran dalam 6 bulan terakhir</p>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={monthlyTrend}>
-              <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
-              <XAxis key="x" dataKey="month" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} />
-              <YAxis key="y" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000000}jt`} />
-              <Tooltip key="tip" contentStyle={{ borderRadius: 12, fontSize: 12 }} formatter={(v: number) => formatIDR(v)} />
-              <Legend key="legend" wrapperStyle={{ fontSize: 12 }} />
-              <Bar key="income" dataKey="income" name="Income" fill="#3B82F6" radius={[6, 6, 0, 0]} />
-              <Bar key="expense" dataKey="expense" name="Expense" fill="#EF4444" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          {trendData.length === 0 ? (
+            <div className="flex items-center justify-center h-[260px] text-muted-foreground text-sm">
+              Belum ada data transaksi untuk ditampilkan.
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={trendData}>
+                <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                <XAxis key="x" dataKey="month" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} />
+                <YAxis key="y" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000000}jt`} />
+                <Tooltip key="tip" contentStyle={{ borderRadius: 12, fontSize: 12 }} formatter={(v: number) => formatIDR(v)} />
+                <Legend key="legend" wrapperStyle={{ fontSize: 12 }} />
+                <Bar key="income" dataKey="income" name="Income" fill="#3B82F6" radius={[6, 6, 0, 0]} />
+                <Bar key="expense" dataKey="expense" name="Expense" fill="#EF4444" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         <Card className="p-6">
           <h3 className="mb-1">Kategori Pengeluaran</h3>
-          <p className="text-xs text-muted-foreground mb-4">Distribusi Mei 2026</p>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie key="pie" data={expenseByCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
-                {expenseByCategory.map((e) => <Cell key={e.name} fill={e.color} />)}
-              </Pie>
-              <Tooltip key="tip" formatter={(v: number) => formatIDR(v)} contentStyle={{ borderRadius: 12, fontSize: 12 }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-4">
-            {expenseByCategory.slice(0, 4).map((c) => (
-              <div key={c.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ background: c.color }} /> {c.name}</div>
-                <span className="font-semibold">{formatIDR(c.value)}</span>
+          <p className="text-xs text-muted-foreground mb-4">Distribusi bulan ini</p>
+          {categoryData.length === 0 ? (
+            <div className="flex items-center justify-center h-[200px] text-muted-foreground text-sm">
+              Belum ada data pengeluaran.
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie key="pie" data={categoryData} dataKey="total" nameKey="category_name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}>
+                    {categoryData.map((e) => <Cell key={e.category_name} fill={e.color ?? '#6B7280'} />)}
+                  </Pie>
+                  <Tooltip key="tip" formatter={(v: number) => formatIDR(v)} contentStyle={{ borderRadius: 12, fontSize: 12 }} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 mt-4">
+                {categoryData.slice(0, 5).map((c) => (
+                  <div key={c.category_name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{ background: c.color ?? '#6B7280' }} /> {c.category_name}</div>
+                    <span className="font-semibold">{formatIDR(c.total)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </Card>
       </div>
 
@@ -249,7 +413,7 @@ export function AnalyticsScreen() {
           <h3 className="mb-1">Pertumbuhan Pemasukan</h3>
           <p className="text-xs text-muted-foreground mb-4">Tren 6 bulan</p>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={monthlyTrend}>
+            <AreaChart data={trendData}>
               <defs>
                 <linearGradient id="growth-income" x1="0" y1="0" x2="0" y2="1">
                   <stop key="s0" offset="0%" stopColor="#10B981" stopOpacity={0.4} />
@@ -269,7 +433,7 @@ export function AnalyticsScreen() {
           <h3 className="mb-1">Cash Flow Analysis</h3>
           <p className="text-xs text-muted-foreground mb-4">Net cash flow per bulan</p>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={monthlyTrend.map((m) => ({ ...m, net: m.income - m.expense }))}>
+            <LineChart data={trendData.map((m) => ({ ...m, net: m.income - m.expense }))}>
               <CartesianGrid key="grid" strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
               <XAxis key="x" dataKey="month" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} />
               <YAxis key="y" fontSize={11} stroke="#6B7280" tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000000}jt`} />
@@ -285,21 +449,27 @@ export function AnalyticsScreen() {
           <Sparkles className="w-5 h-5 text-primary" />
           <h3>Financial Insights</h3>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[
-            { icon: TrendingUp, color: 'emerald', t: 'Pemasukan naik 17%', d: 'Pemasukan bulan ini meningkat dibanding April. Pertahankan momentum!' },
-            { icon: AlertCircle, color: 'amber', t: 'Kategori Belanja tinggi', d: 'Pengeluaran belanja 92% dari budget. Pertimbangkan menahan pembelian non-esensial.' },
-            { icon: Lightbulb, color: 'blue', t: 'Peluang menabung', d: 'Sisa cashflow sebesar 15jt bisa Anda alokasikan ke reksadana atau emas digital.' },
-          ].map((i) => (
-            <div key={i.t} className={`p-4 rounded-xl border bg-${i.color}-50 border-${i.color}-100`}>
-              <div className={`w-9 h-9 rounded-lg bg-${i.color}-100 text-${i.color}-700 flex items-center justify-center mb-3`}>
-                <i.icon className="w-4 h-4" />
+        {trendData.length === 0 ? (
+          <div className="text-center text-muted-foreground text-sm py-4">
+            Tambahkan transaksi untuk melihat insights keuangan Anda.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { icon: TrendingUp, color: 'emerald', t: 'Data dari API', d: 'Grafik di atas menampilkan data transaksi nyata dari akun Anda.' },
+              { icon: AlertCircle, color: 'amber', t: 'Pantau pengeluaran', d: 'Cek kategori dengan persentase terbesar di grafik pie di atas.' },
+              { icon: Lightbulb, color: 'blue', t: 'Peluang menabung', d: `Net cashflow bulan ini: ${formatIDR((trendData[trendData.length - 1]?.income ?? 0) - (trendData[trendData.length - 1]?.expense ?? 0))}.` },
+            ].map((i) => (
+              <div key={i.t} className={`p-4 rounded-xl border bg-${i.color}-50 border-${i.color}-100`}>
+                <div className={`w-9 h-9 rounded-lg bg-${i.color}-100 text-${i.color}-700 flex items-center justify-center mb-3`}>
+                  <i.icon className="w-4 h-4" />
+                </div>
+                <div className="font-semibold text-sm mb-1">{i.t}</div>
+                <div className="text-xs text-muted-foreground">{i.d}</div>
               </div>
-              <div className="font-semibold text-sm mb-1">{i.t}</div>
-              <div className="text-xs text-muted-foreground">{i.d}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
   );

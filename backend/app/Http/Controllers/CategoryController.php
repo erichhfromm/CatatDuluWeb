@@ -9,8 +9,13 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
+        // Safety net: jika user belum punya kategori sama sekali, generate default
+        if (auth()->user()->categories()->count() === 0) {
+            $this->generateDefaultCategoriesForUser(auth()->user());
+        }
+
         $query = auth()->user()->categories();
 
         if ($request->has('type')) {
@@ -21,7 +26,7 @@ class CategoryController extends Controller
             ->orderBy('name')
             ->paginate($request->get('per_page', 30));
 
-        return response()->json(CategoryResource::collection($categories));
+        return CategoryResource::collection($categories);
     }
 
     public function store(Request $request): JsonResponse
@@ -103,5 +108,42 @@ class CategoryController extends Controller
         ])[$type] ?? [];
 
         return response()->json(['categories' => $categories]);
+    }
+
+    private function generateDefaultCategoriesForUser(\App\Models\User $user): void
+    {
+        $incomeCategories = [
+            ['name' => 'Salary', 'icon' => '💰', 'color' => '#10B981'],
+            ['name' => 'Freelance', 'icon' => '💻', 'color' => '#3B82F6'],
+            ['name' => 'Investment', 'icon' => '📈', 'color' => '#8B5CF6'],
+            ['name' => 'Bonus', 'icon' => '🎁', 'color' => '#F59E0B'],
+        ];
+
+        $expenseCategories = [
+            ['name' => 'Food & Dining', 'icon' => '🍔', 'color' => '#EF4444'],
+            ['name' => 'Transportation', 'icon' => '🚗', 'color' => '#F97316'],
+            ['name' => 'Entertainment', 'icon' => '🎬', 'color' => '#EC4899'],
+            ['name' => 'Utilities', 'icon' => '💡', 'color' => '#06B6D4'],
+            ['name' => 'Healthcare', 'icon' => '⚕️', 'color' => '#D946EF'],
+            ['name' => 'Shopping', 'icon' => '🛍️', 'color' => '#8B5CF6'],
+            ['name' => 'Education', 'icon' => '📚', 'color' => '#3B82F6'],
+            ['name' => 'Rent', 'icon' => '🏠', 'color' => '#10B981'],
+        ];
+
+        foreach ($incomeCategories as $cat) {
+            $user->categories()->create(array_merge($cat, [
+                'type' => 'income',
+                'slug' => \Str::slug($cat['name']),
+                'is_custom' => false,
+            ]));
+        }
+
+        foreach ($expenseCategories as $cat) {
+            $user->categories()->create(array_merge($cat, [
+                'type' => 'expense',
+                'slug' => \Str::slug($cat['name']),
+                'is_custom' => false,
+            ]));
+        }
     }
 }

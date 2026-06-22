@@ -41,12 +41,21 @@ class BudgetService
     private function triggerAlert(Budget $budget, string $type, int $threshold): void
     {
         $alert = $budget->alerts()->create([
-            'alert_type' => $type,
+            'alert_type'           => $type,
             'threshold_percentage' => $threshold,
-            'message' => "Your budget '{$budget->name}' has reached {$threshold}% ({$budget->percentage_used}%)",
+            'message'              => "Budget '{$budget->name}' telah mencapai {$threshold}% ({$budget->percentage_used}%)",
         ]);
 
-        $alert->trigger();
+        // Mark alert as triggered
+        $alert->update(['is_triggered' => true, 'triggered_at' => now()]);
+
+        // 🔔 Buat notifikasi via NotificationService (lebih informatif)
+        NotificationService::budgetAlert(
+            $budget->user,
+            $budget->name,
+            (float) $budget->percentage_used,
+            $budget->id
+        );
     }
 
     public function getBudgetSummary(User $user): array

@@ -15,7 +15,7 @@ class StoreTransactionRequest extends FormRequest
     {
         return [
             'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:99999999999.99'],
             'type' => ['required', 'in:income,expense'],
             'description' => ['required', 'string', 'min:3', 'max:255'],
             'notes' => ['nullable', 'string', 'max:1000'],

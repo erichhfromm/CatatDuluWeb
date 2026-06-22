@@ -16,13 +16,13 @@ class UpdateProfileRequest extends FormRequest
         $userId = auth()->user()->id;
 
         return [
-            'name' => ['required', 'string', 'min:3', 'max:255'],
-            'email' => ['required', 'email', "unique:users,email,{$userId}"],
-            'phone' => ['nullable', 'string', 'regex:/^\+?[1-9]\d{1,14}$/'],
+            'name' => ['sometimes', 'required', 'string', 'min:3', 'max:255'],
+            'email' => ['sometimes', 'required', 'email', "unique:users,email,{$userId}"],
+            'phone' => ['nullable', 'string', 'regex:/^\+?[0-9]\d{1,14}$/'],
             'bio' => ['nullable', 'string', 'max:500'],
-            'currency' => ['required', 'string', 'size:3'],
-            'date_format' => ['required', 'string'],
-            'theme' => ['required', 'in:light,dark'],
+            'currency' => ['sometimes', 'required', 'string', 'size:3'],
+            'date_format' => ['sometimes', 'required', 'string'],
+            'theme' => ['sometimes', 'required', 'in:light,dark'],
         ];
     }
 

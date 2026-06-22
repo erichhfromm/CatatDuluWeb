@@ -60,6 +60,7 @@ class Budget extends Model
             ->with('category.transactions')
             ->get()
             ->sum(fn ($bc) => $bc->category->transactions()
+                ->where('type', 'expense')
                 ->whereBetween('transaction_date', [
                     $this->start_date,
                     $this->end_date,

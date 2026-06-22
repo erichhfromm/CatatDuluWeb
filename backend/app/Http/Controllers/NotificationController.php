@@ -9,9 +9,9 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
-        $query = auth()->user()->notifications();
+        $query = auth()->user()->appNotifications();
 
         if ($request->has('read') && is_bool($request->boolean('read'))) {
             $query->where('is_read', $request->boolean('read'));
@@ -24,7 +24,7 @@ class NotificationController extends Controller
         $notifications = $query->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 20));
 
-        return response()->json(NotificationResource::collection($notifications));
+        return NotificationResource::collection($notifications);
     }
 
     public function show(Notification $notification): JsonResponse
@@ -45,7 +45,7 @@ class NotificationController extends Controller
 
     public function markAllAsRead(): JsonResponse
     {
-        auth()->user()->notifications()
+        auth()->user()->appNotifications()
             ->where('is_read', false)
             ->update([
                 'is_read' => true,
@@ -58,7 +58,7 @@ class NotificationController extends Controller
     public function unreadCount(): JsonResponse
     {
         return response()->json([
-            'unread_count' => auth()->user()->notifications()->unread()->count(),
+            'unread_count' => auth()->user()->appNotifications()->unread()->count(),
         ]);
     }
 
@@ -73,7 +73,7 @@ class NotificationController extends Controller
 
     public function deleteAll(): JsonResponse
     {
-        auth()->user()->notifications()->delete();
+        auth()->user()->appNotifications()->delete();
 
         return response()->json(['message' => 'All notifications deleted']);
     }

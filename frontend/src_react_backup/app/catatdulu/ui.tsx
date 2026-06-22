@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { motion } from 'motion/react';
 
 export function Card({ children, className = '', hover = false }: { children: ReactNode; className?: string; hover?: boolean }) {
@@ -10,10 +10,11 @@ export function Card({ children, className = '', hover = false }: { children: Re
 }
 
 export function Button({
-  children, variant = 'primary', size = 'md', className = '', onClick, type = 'button', icon,
+  children, variant = 'primary', size = 'md', className = '', onClick, type = 'button', icon, disabled,
 }: {
   children?: ReactNode; variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success';
   size?: 'sm' | 'md' | 'lg'; className?: string; onClick?: () => void; type?: 'button' | 'submit'; icon?: ReactNode;
+  disabled?: boolean;
 }) {
   const sizes = { sm: 'h-8 px-3 text-xs', md: 'h-10 px-4 text-sm', lg: 'h-12 px-6 text-sm' };
   const variants = {
@@ -25,7 +26,7 @@ export function Button({
     success: 'bg-[#10B981] text-white hover:bg-[#059669]',
   };
   return (
-    <button type={type} onClick={onClick} className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${sizes[size]} ${variants[variant]} ${className}`}>
+    <button type={type} onClick={onClick} disabled={disabled} className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 ${sizes[size]} ${variants[variant]} ${className}`}>
       {icon}
       {children}
     </button>
@@ -61,8 +62,22 @@ export function Label({ children, required }: { children: ReactNode; required?: 
   );
 }
 
-export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+export function Avatar({ name, src, size = 40 }: { name: string; src?: string; size?: number }) {
+  const [error, setError] = useState(false);
   const initials = name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();
+
+  if (src && !error) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        className="rounded-full object-cover shrink-0"
+        style={{ width: size, height: size }}
+        onError={() => setError(true)}
+      />
+    );
+  }
+
   return (
     <div
       className="rounded-full bg-gradient-to-br from-primary to-accent text-white font-semibold flex items-center justify-center shrink-0"

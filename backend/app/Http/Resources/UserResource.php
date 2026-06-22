@@ -20,7 +20,7 @@ class UserResource extends JsonResource
             'is_active' => $this->is_active,
             'subscription_type' => $this->subscription_type,
             'subscription_until' => $this->subscription_until?->toIso8601String(),
-            'profile_picture' => $this->profile_picture,
+            'profile_picture' => $this->profile_picture ? asset('storage/' . $this->profile_picture) : null,
             'bio' => $this->bio,
             'total_balance' => (float) $this->total_balance,
             'monthly_expense' => (float) $this->monthly_expense,

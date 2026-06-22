@@ -1,5 +1,20 @@
 <?php
 
+/**
+ * ⚠️  DEPRECATED — FILE INI TIDAK DIGUNAKAN
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Controller ini adalah sisa dari arsitektur lama (web session-based auth).
+ * Arsitektur saat ini menggunakan API AuthController di:
+ *   → app/Http/Controllers/AuthController.php  (Sanctum token-based)
+ *
+ * File ini TIDAK terhubung ke route manapun di routes/web.php maupun api.php.
+ * Route name yang direferensikan ('catatdulu.screen', 'catatdulu.home') juga
+ * tidak terdefinisi dan akan throw RouteNotFoundException jika dipanggil.
+ *
+ * Jangan hapus dulu tanpa review, tapi jangan tambahkan logika baru di sini.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 namespace App\Http\Controllers\Web;
 
 use App\Http\Controllers\Controller;

@@ -35,6 +35,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/picture', 'uploadProfilePicture')->name('profile.picture');
         Route::get('/preferences', 'preferences')->name('profile.preferences');
         Route::put('/preferences', 'updatePreferences')->name('profile.preferences.update');
+        Route::get('/export', 'exportData')->name('profile.export');
+        Route::post('/disable', 'disableAccount')->name('profile.disable');
+        Route::delete('/', 'destroy')->name('profile.delete');
     });
 
     Route::prefix('dashboard')->controller(DashboardController::class)->group(function () {
@@ -42,21 +45,24 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/recent-transactions', 'recentTransactions')->name('dashboard.recent');
     });
 
-    Route::apiResource('transactions', TransactionController::class);
+    // ⚠️ Route custom HARUS didaftarkan SEBELUM apiResource
     Route::post('/transactions/bulk-delete', [TransactionController::class, 'bulkDelete'])->name('transactions.bulk-delete');
     Route::get('/transactions/monthly-stats', [TransactionController::class, 'monthlyStats'])->name('transactions.stats');
+    Route::apiResource('transactions', TransactionController::class);
 
-    Route::apiResource('categories', CategoryController::class);
     Route::get('/categories/default', [CategoryController::class, 'default'])->name('categories.default');
+    Route::apiResource('categories', CategoryController::class);
 
-    Route::apiResource('budgets', BudgetController::class);
+    // ⚠️ Route custom HARUS didaftarkan SEBELUM apiResource
     Route::get('/budgets/summary', [BudgetController::class, 'summary'])->name('budgets.summary');
     Route::post('/budgets/check-alerts', [BudgetController::class, 'checkAlerts'])->name('budgets.alerts');
+    Route::apiResource('budgets', BudgetController::class);
     Route::get('/budgets/{budget}/breakdown', [BudgetController::class, 'breakdown'])->name('budgets.breakdown');
 
-    Route::apiResource('goals', GoalController::class);
-    Route::post('/goals/{goal}/progress', [GoalController::class, 'recordProgress'])->name('goals.progress');
+    // ⚠️ Route custom HARUS didaftarkan SEBELUM apiResource
     Route::get('/goals/summary', [GoalController::class, 'summary'])->name('goals.summary');
+    Route::apiResource('goals', GoalController::class);
+    Route::post('/goals/{goal}/progress', [GoalController::class, 'recordProgress'])->name('goals.record-progress');
     Route::get('/goals/{goal}/progress', [GoalController::class, 'progress'])->name('goals.progress.show');
 
     Route::prefix('analytics')->controller(AnalyticsController::class)->group(function () {
@@ -79,12 +85,15 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('notifications')->controller(NotificationController::class)->group(function () {
+        // ⚠️ Static routes HARUS sebelum dynamic /{notification}
         Route::get('/', 'index')->name('notifications.index');
-        Route::get('/{notification}', 'show')->name('notifications.show');
-        Route::put('/{notification}/read', 'markAsRead')->name('notifications.read');
+        Route::delete('/', 'deleteAll')->name('notifications.delete-all');
         Route::post('/read-all', 'markAllAsRead')->name('notifications.read-all');
         Route::get('/unread-count', 'unreadCount')->name('notifications.unread');
+
+        // Dynamic routes menggunakan route model binding
+        Route::get('/{notification}', 'show')->name('notifications.show');
+        Route::put('/{notification}/read', 'markAsRead')->name('notifications.read');
         Route::delete('/{notification}', 'delete')->name('notifications.delete');
-        Route::delete('/', 'deleteAll')->name('notifications.delete-all');
     });
 });

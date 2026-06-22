@@ -6,6 +6,7 @@ use App\Http\Requests\StoreBudgetRequest;
 use App\Http\Resources\BudgetResource;
 use App\Models\Budget;
 use App\Services\BudgetService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -13,7 +14,7 @@ class BudgetController extends Controller
 {
     public function __construct(private BudgetService $service) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
         $query = auth()->user()->budgets()->with('categories.category', 'alerts');
 
@@ -25,19 +26,28 @@ class BudgetController extends Controller
             $query->where('period', $request->period);
         }
 
+        if ($request->has('from_date')) {
+            $query->where('start_date', '>=', $request->from_date);
+        }
+
+        if ($request->has('to_date')) {
+            $query->where('end_date', '<=', $request->to_date);
+        }
+
         $budgets = $query->orderBy('created_at', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return response()->json(BudgetResource::collection($budgets));
+        return BudgetResource::collection($budgets);
     }
 
     public function store(StoreBudgetRequest $request): JsonResponse
     {
+        $user      = auth()->user();
         $validated = $request->validated();
         $categories = $validated['categories'] ?? [];
         unset($validated['categories']);
 
-        $budget = auth()->user()->budgets()->create($validated);
+        $budget = $user->budgets()->create($validated);
 
         if ($categories) {
             foreach ($categories as $category) {
@@ -45,10 +55,12 @@ class BudgetController extends Controller
             }
         }
 
-        return response()->json(
-            new BudgetResource($budget->load('categories.category', 'alerts')),
-            201
-        );
+        $budget->load('categories.category', 'alerts');
+
+        // 🔔 Notifikasi saat budget baru dibuat
+        NotificationService::budgetCreated($user, $budget->name, (float) $budget->amount, $budget->id);
+
+        return response()->json(new BudgetResource($budget), 201);
     }
 
     public function show(Budget $budget): JsonResponse
@@ -64,7 +76,7 @@ class BudgetController extends Controller
     {
         $this->authorize('update', $budget);
 
-        $validated = $request->validated();
+        $validated  = $request->validated();
         $categories = $validated['categories'] ?? [];
         unset($validated['categories']);
 
@@ -86,7 +98,13 @@ class BudgetController extends Controller
     {
         $this->authorize('delete', $budget);
 
+        $user = auth()->user();
+        $name = $budget->name;
+
         $budget->delete();
+
+        // 🔔 Notifikasi saat budget dihapus
+        NotificationService::budgetDeleted($user, $name);
 
         return response()->json(['message' => 'Budget deleted successfully']);
     }
@@ -108,7 +126,7 @@ class BudgetController extends Controller
         $this->authorize('view', $budget);
 
         return response()->json([
-            'budget' => new BudgetResource($budget),
+            'budget'    => new BudgetResource($budget),
             'breakdown' => $this->service->getBudgetBreakdown($budget),
         ]);
     }

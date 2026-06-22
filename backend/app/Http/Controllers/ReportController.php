@@ -12,7 +12,7 @@ class ReportController extends Controller
 {
     public function __construct(private ReportService $service) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
         $query = auth()->user()->reports();
 
@@ -23,7 +23,7 @@ class ReportController extends Controller
         $reports = $query->orderBy('generated_at', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return response()->json(ReportResource::collection($reports));
+        return ReportResource::collection($reports);
     }
 
     public function generateSummary(): JsonResponse

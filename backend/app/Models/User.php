@@ -21,6 +21,7 @@ class User extends Authenticatable
         'currency',
         'date_format',
         'theme',
+        'preferences',
         'is_active',
         'subscription_type',
         'subscription_until',
@@ -40,6 +41,7 @@ class User extends Authenticatable
         'subscription_until' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'preferences' => 'array',
     ];
 
     protected $appends = [
@@ -68,7 +70,8 @@ class User extends Authenticatable
         return $this->hasMany(FinancialGoal::class);
     }
 
-    public function notifications(): HasMany
+    // ✅ Diganti nama agar tidak konflik dengan relasi notifications() bawaan trait Notifiable
+    public function appNotifications(): HasMany
     {
         return $this->hasMany(Notification::class);
     }

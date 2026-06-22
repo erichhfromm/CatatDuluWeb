@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -195,6 +196,11 @@ class AuthController extends Controller
             'otp_code'  => null,
         ]);
 
+        // Buat kategori default jika user belum punya kategori
+        if ($user->categories()->count() === 0) {
+            $this->createDefaultCategories($user);
+        }
+
         Log::info("[OTP VERIFIED] Akun diaktifkan: {$user->email}");
 
         return response()->json([
@@ -324,12 +330,49 @@ class AuthController extends Controller
         }
 
         $user->update([
-            'password' => $validated['password'],
+            'password' => Hash::make($validated['password']), // ✅ Selalu hash password sebelum disimpan
             'otp_code' => null,
         ]);
 
         Log::info("[PASSWORD RESET] Password diperbarui untuk: {$user->email}");
 
         return response()->json(['message' => 'Password berhasil diperbarui! Silakan masuk dengan password baru Anda.']);
+    }
+
+    private function createDefaultCategories(User $user): void
+    {
+        $incomeCategories = [
+            ['name' => 'Salary', 'icon' => '💰', 'color' => '#10B981'],
+            ['name' => 'Freelance', 'icon' => '💻', 'color' => '#3B82F6'],
+            ['name' => 'Investment', 'icon' => '📈', 'color' => '#8B5CF6'],
+            ['name' => 'Bonus', 'icon' => '🎁', 'color' => '#F59E0B'],
+        ];
+
+        $expenseCategories = [
+            ['name' => 'Food & Dining', 'icon' => '🍔', 'color' => '#EF4444'],
+            ['name' => 'Transportation', 'icon' => '🚗', 'color' => '#F97316'],
+            ['name' => 'Entertainment', 'icon' => '🎬', 'color' => '#EC4899'],
+            ['name' => 'Utilities', 'icon' => '💡', 'color' => '#06B6D4'],
+            ['name' => 'Healthcare', 'icon' => '⚕️', 'color' => '#D946EF'],
+            ['name' => 'Shopping', 'icon' => '🛍️', 'color' => '#8B5CF6'],
+            ['name' => 'Education', 'icon' => '📚', 'color' => '#3B82F6'],
+            ['name' => 'Rent', 'icon' => '🏠', 'color' => '#10B981'],
+        ];
+
+        foreach ($incomeCategories as $cat) {
+            $user->categories()->create(array_merge($cat, [
+                'type' => 'income',
+                'slug' => \Str::slug($cat['name']),
+                'is_custom' => false,
+            ]));
+        }
+
+        foreach ($expenseCategories as $cat) {
+            $user->categories()->create(array_merge($cat, [
+                'type' => 'expense',
+                'slug' => \Str::slug($cat['name']),
+                'is_custom' => false,
+            ]));
+        }
     }
 }

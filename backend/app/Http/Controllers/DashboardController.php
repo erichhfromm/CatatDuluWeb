@@ -27,7 +27,7 @@ class DashboardController extends Controller
                 'transactions_count' => $user->transactions()->count(),
                 'budgets_active' => $user->budgets()->active()->count(),
                 'goals_active' => $user->goals()->active()->count(),
-                'notifications_unread' => $user->notifications()->unread()->count(),
+                'notifications_unread' => $user->appNotifications()->unread()->count(),
             ],
         ]);
     }

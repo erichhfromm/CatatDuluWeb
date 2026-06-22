@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout, type Route } from './catatdulu/Layout';
 import { Toaster } from 'sonner';
 import {
@@ -12,7 +12,7 @@ import {
   PasswordChangedSuccessScreen
 } from './catatdulu/screens/Auth';
 import { Dashboard } from './catatdulu/screens/Dashboard';
-import { IncomeScreen, ExpenseScreen } from './catatdulu/screens/Transactions';
+import { IncomeScreen, ExpenseScreen, TransactionDetail } from './catatdulu/screens/Transactions';
 import { BudgetScreen, AnalyticsScreen } from './catatdulu/screens/BudgetAnalytics';
 import { ReportsScreen } from './catatdulu/screens/Reports';
 import { NotificationsScreen, ProfileScreen, SettingsScreen } from './catatdulu/screens/Account';
@@ -24,6 +24,15 @@ export function CatatDuluApp() {
   // State Penampung Sementara Data Aktivasi Registrasi OTP
   const [contextEmail, setContextEmail] = useState('');
   const [contextPhone, setContextPhone] = useState('');
+  const [contextTxId, setContextTxId] = useState<number | null>(null);
+
+  // Auto-detect: if token exists, skip splash → dashboard
+  useEffect(() => {
+    const token = localStorage.getItem('api_token');
+    if (token) {
+      setRoute('dashboard');
+    }
+  }, []);
 
   // State Penampung Sementara Data Lupa Password
   const [resetEmail, setResetEmail] = useState('');
@@ -87,24 +96,24 @@ export function CatatDuluApp() {
   // ==========================================
   // 2. BLOK AKUN INTERNAL (DALAM BINGKAI LAYOUT)
   // ==========================================
+
+  const handleLogout = () => {
+    localStorage.removeItem('api_token');
+    setRoute('login');
+  };
+
   return (
-    <Layout route={route} setRoute={setRoute}>
-      {route === 'dashboard' && <Dashboard setRoute={setRoute} />}
-      {route === 'income' && <IncomeScreen setRoute={setRoute} />}
-      {route === 'expense' && <ExpenseScreen setRoute={setRoute} />}
+    <Layout route={route} setRoute={setRoute} onLogout={handleLogout}>
+      {route === 'dashboard' && <Dashboard setRoute={setRoute} setTxId={setContextTxId} />}
+      {route === 'income' && <IncomeScreen setRoute={setRoute} setTxId={setContextTxId} />}
+      {route === 'expense' && <ExpenseScreen setRoute={setRoute} setTxId={setContextTxId} />}
+      {route === 'transaction-detail' && <TransactionDetail setRoute={setRoute} txId={contextTxId} />}
       {route === 'budget' && <BudgetScreen />}
       {route === 'analytics' && <AnalyticsScreen />}
       {route === 'reports' && <ReportsScreen />}
       {route === 'notifications' && <NotificationsScreen />}
       {route === 'profile' && <ProfileScreen />}
-      {route === 'settings' && <SettingsScreen />}
-
-      {/* Fallback Screen handler jika route belum didefinisikan tampilannya */}
-      {!['dashboard', 'income', 'expense', 'budget', 'analytics', 'reports', 'notifications', 'profile', 'settings'].includes(route) && (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Halaman <span className="font-semibold">{route}</span> sedang dalam proses pengembangan sistem.
-        </div>
-      )}
+      {route === 'settings' && <SettingsScreen onLogout={handleLogout} />}
     </Layout>
   );
 }

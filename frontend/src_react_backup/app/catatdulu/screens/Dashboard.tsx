@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Wallet, TrendingUp, TrendingDown, PiggyBank, Plus, ArrowUpRight, ArrowDownRight, FileText, Target, Loader2 } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Card, Badge, Button, StatCard, SectionHeader } from '../ui';
 import { formatIDR } from '../api';
-import { dashboardApi, budgetsApi, type ApiTransaction, type DashboardStats, type ApiBudget } from '../api';
+import { dashboardApi, budgetsApi, analyticsApi, type ApiTransaction, type DashboardStats, type ApiBudget, type ApiMonthlyTrend } from '../api';
 import type { Route } from '../Layout';
 
-export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
+export function Dashboard({ setRoute, setTxId }: { setRoute: (r: Route) => void; setTxId?: (id: number) => void }) {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recent, setRecent] = useState<ApiTransaction[]>([]);
   const [budgets, setBudgets] = useState<ApiBudget[]>([]);
+  const [chartData, setChartData] = useState<ApiMonthlyTrend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -19,11 +20,13 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
       dashboardApi.stats(),
       dashboardApi.recentTransactions(5),
       budgetsApi.list(),
+      analyticsApi.monthlyTrend(6),
     ])
-      .then(([statsData, recentData, budgetData]) => {
+      .then(([statsData, recentData, budgetData, trendData]) => {
         setStats(statsData);
         setRecent(recentData.transactions ?? []);
         setBudgets(budgetData.data ?? []);
+        setChartData(Array.isArray(trendData) ? trendData : []);
       })
       .catch(() => setError('Gagal memuat data dashboard.'))
       .finally(() => setLoading(false));
@@ -53,14 +56,6 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
   const monthlyExpense = stats?.balance?.monthly_expense ?? 0;
   const savings = monthlyIncome - monthlyExpense;
 
-  // Build chart data: last 6 months labels (placeholder karena butuh endpoint analytics)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun'];
-  const chartData = months.map((month) => ({
-    month,
-    income: monthlyIncome,
-    expense: monthlyExpense,
-  }));
-
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -86,29 +81,44 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3>Cash Flow</h3>
-              <p className="text-xs text-muted-foreground mt-1">Pemasukan vs pengeluaran bulan ini</p>
+              <p className="text-xs text-muted-foreground mt-1">Pemasukan vs pengeluaran 6 bulan terakhir</p>
             </div>
+            <Badge variant="info">Live Data</Badge>
           </div>
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="cf-income" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="cf-expense" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#EF4444" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#EF4444" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
-              <XAxis dataKey="month" stroke="#6B7280" fontSize={11} tickLine={false} axisLine={false} />
-              <YAxis stroke="#6B7280" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000000}jt`} />
-              <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }} formatter={(v: number) => formatIDR(v)} />
-              <Area type="monotone" dataKey="income" name="Income" stroke="#3B82F6" strokeWidth={2.5} fill="url(#cf-income)" />
-              <Area type="monotone" dataKey="expense" name="Expense" stroke="#EF4444" strokeWidth={2.5} fill="url(#cf-expense)" />
-            </AreaChart>
-          </ResponsiveContainer>
+          {chartData.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[280px] gap-3 text-muted-foreground">
+              <TrendingUp className="w-10 h-10 opacity-30" />
+              <div className="text-center">
+                <p className="text-sm font-medium">Belum ada data historis</p>
+                <p className="text-xs mt-1">Tambahkan transaksi untuk melihat grafik cash flow</p>
+              </div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={chartData}>
+                <defs>
+                  <linearGradient id="cf-income" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#3B82F6" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="cf-expense" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#EF4444" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#EF4444" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                <XAxis dataKey="month" stroke="#6B7280" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#6B7280" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000000}jt`} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }}
+                  formatter={(v: number) => formatIDR(v)}
+                />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+                <Area type="monotone" dataKey="income" name="Pemasukan" stroke="#3B82F6" strokeWidth={2.5} fill="url(#cf-income)" dot={{ r: 3, fill: '#3B82F6' }} activeDot={{ r: 5 }} />
+                <Area type="monotone" dataKey="expense" name="Pengeluaran" stroke="#EF4444" strokeWidth={2.5} fill="url(#cf-expense)" dot={{ r: 3, fill: '#EF4444' }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         <Card className="p-6">
@@ -179,7 +189,14 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
                 </thead>
                 <tbody>
                   {recent.map((t) => (
-                    <tr key={t.id} className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer">
+                    <tr 
+                      key={t.id} 
+                      className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
+                      onClick={() => {
+                        setTxId?.(t.id);
+                        setRoute('transaction-detail');
+                      }}
+                    >
                       <td className="py-3 px-6">
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${t.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
@@ -220,8 +237,8 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
           ) : (
             <div className="space-y-4">
               {budgets.slice(0, 5).map((b) => {
-                const spent = 0; // budget belum punya spent field di API, tampilkan allocated
-                const pct = 0;
+                const spent = b.spent_amount ?? 0;
+                const pct = Math.round(b.percentage_used ?? 0);
                 return (
                   <div key={b.id}>
                     <div className="flex items-center justify-between text-xs mb-1.5">
@@ -235,7 +252,7 @@ export function Dashboard({ setRoute }: { setRoute: (r: Route) => void }) {
                       <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, background: b.color ?? '#3B82F6' }} />
                     </div>
                     <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                      <span>Rp 0</span>
+                      <span>{formatIDR(spent)}</span>
                       <span>dari {formatIDR(b.amount)}</span>
                     </div>
                   </div>

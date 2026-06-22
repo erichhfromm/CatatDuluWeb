@@ -6,6 +6,8 @@ use App\Http\Requests\StoreTransactionRequest;
 use App\Http\Requests\UpdateTransactionRequest;
 use App\Http\Resources\TransactionResource;
 use App\Models\Transaction;
+use App\Services\BudgetService;
+use App\Services\NotificationService;
 use App\Services\TransactionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +16,7 @@ class TransactionController extends Controller
 {
     public function __construct(private TransactionService $service) {}
 
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
     {
         $query = auth()->user()->transactions()->with('category', 'attachments');
 
@@ -40,17 +42,28 @@ class TransactionController extends Controller
         $transactions = $query->orderBy('transaction_date', 'desc')
             ->paginate($request->get('per_page', 15));
 
-        return response()->json(TransactionResource::collection($transactions));
+        return TransactionResource::collection($transactions);
     }
 
     public function store(StoreTransactionRequest $request): JsonResponse
     {
-        $transaction = auth()->user()->transactions()->create($request->validated());
+        $user        = auth()->user();
+        $transaction = $user->transactions()->create($request->validated());
+        $transaction->load('category', 'attachments');
 
-        return response()->json(
-            new TransactionResource($transaction->load('category', 'attachments')),
-            201
+        // 🔔 Notifikasi otomatis saat transaksi dicatat
+        NotificationService::transactionCreated(
+            $user,
+            $transaction->category->name ?? 'Lainnya',
+            (float) $transaction->amount,
+            $transaction->type,
+            $transaction->id
         );
+
+        // Cek apakah ada budget yang mendekati/melebihi batas
+        app(BudgetService::class)->checkBudgetAlerts($user);
+
+        return response()->json(new TransactionResource($transaction), 201);
     }
 
     public function show(Transaction $transaction): JsonResponse
@@ -67,17 +80,27 @@ class TransactionController extends Controller
         $this->authorize('update', $transaction);
 
         $transaction->update($request->validated());
+        $transaction->load('category', 'attachments');
 
-        return response()->json(
-            new TransactionResource($transaction->load('category', 'attachments'))
-        );
+        // Cek budget setelah transaksi diubah
+        app(BudgetService::class)->checkBudgetAlerts(auth()->user());
+
+        return response()->json(new TransactionResource($transaction));
     }
 
     public function destroy(Transaction $transaction): JsonResponse
     {
         $this->authorize('delete', $transaction);
 
+        $user     = auth()->user();
+        $category = $transaction->category->name ?? 'Lainnya';
+        $amount   = (float) $transaction->amount;
+        $type     = $transaction->type;
+
         $transaction->delete();
+
+        // 🔔 Notifikasi saat transaksi dihapus
+        NotificationService::transactionDeleted($user, $category, $amount, $type);
 
         return response()->json(['message' => 'Transaction deleted successfully']);
     }
@@ -91,7 +114,7 @@ class TransactionController extends Controller
             ->delete();
 
         return response()->json([
-            'message' => "{$deleted} transactions deleted successfully",
+            'message'       => "{$deleted} transactions deleted successfully",
             'deleted_count' => $deleted,
         ]);
     }
@@ -101,9 +124,9 @@ class TransactionController extends Controller
         $user = auth()->user();
 
         return response()->json([
-            'income' => $this->service->getTotalIncome($user),
-            'expense' => $this->service->getTotalExpense($user),
-            'balance' => $this->service->getNetBalance($user),
+            'income'      => $this->service->getTotalIncome($user),
+            'expense'     => $this->service->getTotalExpense($user),
+            'balance'     => $this->service->getNetBalance($user),
             'by_category' => $this->service->getMonthlyExpenseByCategory($user),
         ]);
     }
